@@ -24,10 +24,30 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(unsafe_op_in_unsafe_fn)]
 
+#[cfg(all(
+  feature = "engine_v8",
+  any(feature = "engine_jsc", feature = "engine_quickjs")
+))]
+compile_error!(
+  "feature `v8` is mutually exclusive with `jsc` and `quickjs`; disable default features"
+);
+
+#[cfg(feature = "engine_v8")]
+pub use rusty_v8::*;
+
+#[cfg(not(feature = "engine_v8"))]
 #[macro_use]
 extern crate bitflags;
+#[cfg(not(feature = "engine_v8"))]
 extern crate temporal_capi;
 
+macro_rules! shim {
+  ($($item:item)*) => {
+    $(#[cfg(not(feature = "engine_v8"))] $item)*
+  };
+}
+
+shim! {
 #[path = "../vendor/rusty_v8/src/array_buffer.rs"]
 mod array_buffer;
 #[path = "../vendor/rusty_v8/src/array_buffer_view.rs"]
@@ -293,9 +313,12 @@ pub use support::MapFnTo;
 
 pub const TYPED_ARRAY_MAX_SIZE_IN_HEAP: usize =
   binding::v8__TYPED_ARRAY_MAX_SIZE_IN_HEAP as _;
+}
 
 /// The engine backend this build of the shim runs on.
-pub const V8X_ENGINE: &str = if cfg!(feature = "engine_quickjs") {
+pub const V8X_ENGINE: &str = if cfg!(feature = "engine_v8") {
+  "v8"
+} else if cfg!(feature = "engine_quickjs") {
   "quickjs"
 } else if cfg!(feature = "vendor_jsc") {
   "jsc"

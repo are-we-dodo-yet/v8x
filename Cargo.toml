@@ -68,8 +68,10 @@ path = "src/lib.rs"
 default = ["engine_jsc", "vendor_jsc"]
 engine_jsc = []
 engine_quickjs = []
+engine_v8 = ["dep:rusty_v8"]
 # Short aliases (README-facing).
 jsc = ["engine_jsc", "vendor_jsc"]
+v8 = ["engine_v8"]
 # System JavaScriptCore.framework (tiny binary, no vendored WebKit). Apple's
 # shipped module API is too limited for full native ESM (fetch-only loader, no
 # custom resolve, no synthetic modules) — so this build uses the string-rewriter
@@ -89,17 +91,21 @@ link_quickjs = []
 vendor_jsc = []
 
 # v8-crate feature flags Deno toggles; inert here.
-use_custom_libcxx = []
-simdutf = []
-v8_enable_pointer_compression = []
-v8_enable_sandbox = ["v8_enable_pointer_compression"]
-v8_enable_v8_checks = []
+use_custom_libcxx = ["rusty_v8?/use_custom_libcxx"]
+simdutf = ["rusty_v8?/simdutf"]
+v8_enable_pointer_compression = ["rusty_v8?/v8_enable_pointer_compression"]
+v8_enable_sandbox = [
+  "v8_enable_pointer_compression",
+  "rusty_v8?/v8_enable_sandbox",
+]
+v8_enable_v8_checks = ["rusty_v8?/v8_enable_v8_checks"]
 
 [dependencies]
 bitflags = "2.5"
 icu_collator = { version = "2.2.1", optional = true }
 icu_locale = { version = "2.2.0", optional = true }
 paste = "1.0"
+rusty_v8 = { package = "v8", version = "=152.1.0", default-features = false, optional = true }
 temporal_capi = { version = "0.2.3", features = ["zoneinfo64"] }
 temporal_rs = { version = "0.2.3", default-features = false }
 timezone_provider = { version = "0.2.3", features = ["zoneinfo64"] }

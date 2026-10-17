@@ -26,6 +26,7 @@ Engine features are mutually exclusive; enable exactly one:
   [`quickjs`], [QuickJS-ng, vendored + static], [works everywhere, \~1 MB, fastest build],
   [`jsc`], [WebKit JSCOnly, built from source], [macOS; shippable, JIT-enabled],
   [`system_jsc`], [Apple's `JavaScriptCore.framework`], [macOS; zero engine bytes in your binary],
+  [`v8`], [V8, through the upstream `v8` crate], [same engine as stock rusty_v8; needs `default-features = false`],
 )
 
 Your code keeps using the `v8` crate API: `v8::Isolate`, `v8::Local`,
