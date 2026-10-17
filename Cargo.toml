@@ -3,7 +3,7 @@
 # can run unmodified. Downstream crates should depend on this package under an
 # explicit alias when both rusty_v8 and v8x are available.
 name = "v8x"
-version = "152.1.0-rc.1"
+version = "152.2.0-rc.1"
 edition = "2024"
 authors = ["Divy Srivastava <me@littledivy.com>"]
 description = "Engine agnostic JavaScript"
@@ -105,7 +105,7 @@ bitflags = "2.5"
 icu_collator = { version = "2.2.1", optional = true }
 icu_locale = { version = "2.2.0", optional = true }
 paste = "1.0"
-rusty_v8 = { package = "v8", version = "=152.1.0", default-features = false, optional = true }
+rusty_v8 = { package = "v8", version = "=152.2.0", default-features = false, optional = true }
 temporal_capi = { version = "0.2.3", features = ["zoneinfo64"] }
 temporal_rs = { version = "0.2.3", default-features = false }
 timezone_provider = { version = "0.2.3", features = ["zoneinfo64"] }

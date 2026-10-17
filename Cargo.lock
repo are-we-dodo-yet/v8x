@@ -766,9 +766,9 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "v8"
-version = "152.1.0"
+version = "152.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb60870e5cff45e02719ab782f1c67507d33c4ef184755656bcc11a9795ccf83"
+checksum = "a10fe1a92da5c32c7c7f838ce36c0ccfcfd5edf0865b58bdde820aa64cea9888"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "v8x"
-version = "152.1.0-rc.1"
+version = "152.2.0-rc.1"
 dependencies = [
  "align-data",
  "bindgen 0.70.1",
