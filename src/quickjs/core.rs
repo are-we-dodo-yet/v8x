@@ -438,6 +438,9 @@ pub(crate) struct IsoState {
 
   pub use_counter_callback: Option<crate::UseCounterCallback>,
 
+  pub modify_code_generation_callback:
+    Option<super::isolate::ModifyCodeGenerationCallback>,
+
   pub counter_lookup_callback:
     Option<crate::isolate_create_params::CounterLookupCallback>,
 
@@ -969,6 +972,7 @@ pub extern "C" fn v8__Isolate__New(params: *const c_void) -> *mut RealIsolate {
     gc_epilogue_callbacks: Vec::new(),
     message_listeners: Vec::new(),
     use_counter_callback: None,
+    modify_code_generation_callback: None,
     counter_lookup_callback,
     javascript_execution_disallow_scopes: Vec::new(),
     javascript_execution_allow_depth: 0,
@@ -2490,7 +2494,44 @@ pub(crate) fn new_script_value(ctx: *mut JSContext, source: &[u8]) -> JSValue {
     unsafe { JS_FreeValue(ctx, script) };
     return jsv_exception();
   }
+  let script_id = super::module::next_module_script_id();
+  let result = unsafe {
+    JS_DefinePropertyValueStr(
+      ctx,
+      script,
+      c"__v8x_script_id".as_ptr(),
+      JS_NewInt32(ctx, script_id),
+      0,
+    )
+  };
+  if result < 0 {
+    unsafe { JS_FreeValue(ctx, script) };
+    return jsv_exception();
+  }
   script
+}
+
+pub(crate) fn script_id_value(
+  ctx: *mut JSContext,
+  script: *const impl Sized,
+) -> i32 {
+  if ctx.is_null() || script.is_null() {
+    return 0;
+  }
+  let value = jsval_of(script);
+  if value.tag != JS_TAG_OBJECT {
+    return 0;
+  }
+  let id =
+    unsafe { JS_GetPropertyStr(ctx, value, c"__v8x_script_id".as_ptr()) };
+  let mut script_id = 0;
+  if unsafe { JS_ToInt32(ctx, &mut script_id, id) } < 0 {
+    let exception = unsafe { JS_GetException(ctx) };
+    unsafe { JS_FreeValue(ctx, exception) };
+    script_id = 0;
+  }
+  unsafe { JS_FreeValue(ctx, id) };
+  script_id
 }
 
 pub(crate) fn script_source_value(

@@ -259,6 +259,145 @@ unsafe extern "C" fn codegen_thrower(
   }
 }
 
+#[repr(C)]
+pub(crate) struct ModifyCodeGenerationResult {
+  codegen_allowed: bool,
+  modified_source: *const crate::String,
+}
+
+pub(crate) type ModifyCodeGenerationCallback =
+  unsafe extern "C" fn(
+    context: *const Context,
+    source: *const Value,
+    is_code_like: bool,
+  ) -> ModifyCodeGenerationResult;
+
+unsafe fn consult_code_generation_callback(
+  ctx: *mut JSContext,
+  source: JSValue,
+) -> Result<Option<JSValue>, JSValue> {
+  let disallowed =
+    || unsafe { codegen_thrower(ctx, jsv_undefined(), 0, ptr::null_mut()) };
+  let iso = current_iso();
+  if iso.is_null() {
+    return Err(disallowed());
+  }
+  let Some(callback) = iso_state(iso).modify_code_generation_callback else {
+    return Err(disallowed());
+  };
+  let context = intern_ctx(ctx);
+  if context.is_null() {
+    return Err(disallowed());
+  }
+  let source = intern_dup::<Value>(ctx, source);
+  let result = unsafe { callback(context, source, false) };
+  if unsafe { JS_HasException(ctx) } {
+    return Err(jsv_exception());
+  }
+  if !result.codegen_allowed {
+    return Err(disallowed());
+  }
+  Ok(
+    (!result.modified_source.is_null())
+      .then(|| jsval_of(result.modified_source)),
+  )
+}
+
+fn saved_codegen_binding(
+  ctx: *mut JSContext,
+  pick: impl FnOnce((JSValue, JSValue)) -> JSValue,
+) -> Option<JSValue> {
+  CODEGEN_DISABLED
+    .with(|m| m.borrow().get(&ctx).copied())
+    .map(|saved| unsafe { JS_DupValue(ctx, pick(saved)) })
+}
+
+unsafe fn call_saved_eval(ctx: *mut JSContext, source: JSValue) -> JSValue {
+  let Some(eval) = saved_codegen_binding(ctx, |(eval, _)| eval) else {
+    return unsafe {
+      codegen_thrower(ctx, jsv_undefined(), 0, ptr::null_mut())
+    };
+  };
+  let mut args = [source];
+  let result =
+    unsafe { JS_Call(ctx, eval, jsv_undefined(), 1, args.as_mut_ptr()) };
+  unsafe { JS_FreeValue(ctx, eval) };
+  result
+}
+
+unsafe extern "C" fn codegen_eval_hook(
+  ctx: *mut JSContext,
+  _this: JSValue,
+  argc: c_int,
+  argv: *mut JSValue,
+) -> JSValue {
+  let source = if argc > 0 && !argv.is_null() {
+    unsafe { *argv }
+  } else {
+    jsv_undefined()
+  };
+  match unsafe { consult_code_generation_callback(ctx, source) } {
+    Ok(modified) => unsafe { call_saved_eval(ctx, modified.unwrap_or(source)) },
+    Err(exception) => exception,
+  }
+}
+
+unsafe extern "C" fn codegen_function_hook(
+  ctx: *mut JSContext,
+  _this: JSValue,
+  argc: c_int,
+  argv: *mut JSValue,
+) -> JSValue {
+  let args: &[JSValue] = if argc > 0 && !argv.is_null() {
+    unsafe { std::slice::from_raw_parts(argv, argc as usize) }
+  } else {
+    &[]
+  };
+  let mut parts = Vec::with_capacity(args.len());
+  for arg in args {
+    let mut len = 0usize;
+    let text = unsafe { JS_ToCStringLen(ctx, &mut len, *arg) };
+    if text.is_null() {
+      return jsv_exception();
+    }
+    parts.push(
+      String::from_utf8_lossy(unsafe {
+        std::slice::from_raw_parts(text as *const u8, len)
+      })
+      .into_owned(),
+    );
+    unsafe { JS_FreeCString(ctx, text) };
+  }
+  let body = parts.pop().unwrap_or_default();
+  let text = format!(
+    "(function anonymous({}\n) {{\n{}\n}})",
+    parts.join(","),
+    body
+  );
+  let source =
+    unsafe { JS_NewStringLen(ctx, text.as_ptr() as *const c_char, text.len()) };
+  if source.tag == JS_TAG_EXCEPTION {
+    return source;
+  }
+  let decision = unsafe { consult_code_generation_callback(ctx, source) };
+  unsafe { JS_FreeValue(ctx, source) };
+  match decision {
+    Ok(Some(modified)) => unsafe { call_saved_eval(ctx, modified) },
+    Ok(None) => {
+      let Some(function) = saved_codegen_binding(ctx, |(_, function)| function)
+      else {
+        return unsafe {
+          codegen_thrower(ctx, jsv_undefined(), 0, ptr::null_mut())
+        };
+      };
+      let result = unsafe { JS_CallConstructor(ctx, function, argc, argv) };
+      unsafe { JS_FreeValue(ctx, function) };
+      result
+    }
+    Err(exception) => exception,
+  }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn v8__Context__AllowCodeGenerationFromStrings(
   this: *const Context,
@@ -288,12 +427,18 @@ pub extern "C" fn v8__Context__AllowCodeGenerationFromStrings(
       // Save the current bindings (owning a ref each) so we can restore them.
       let saved_eval = JS_GetPropertyStr(ctx, global, c"eval".as_ptr());
       let saved_func = JS_GetPropertyStr(ctx, global, c"Function".as_ptr());
-      let thrower_eval =
-        JS_NewCFunction(ctx, codegen_thrower, c"eval".as_ptr(), 1);
-      let thrower_func =
-        JS_NewCFunction(ctx, codegen_thrower, c"Function".as_ptr(), 1);
-      JS_SetPropertyStr(ctx, global, c"eval".as_ptr(), thrower_eval);
-      JS_SetPropertyStr(ctx, global, c"Function".as_ptr(), thrower_func);
+      let hook_eval =
+        JS_NewCFunction(ctx, codegen_eval_hook, c"eval".as_ptr(), 1);
+      let hook_func = JS_NewCFunction2(
+        ctx,
+        codegen_function_hook,
+        c"Function".as_ptr(),
+        1,
+        JS_CFUNC_CONSTRUCTOR_OR_FUNC,
+        0,
+      );
+      JS_SetPropertyStr(ctx, global, c"eval".as_ptr(), hook_eval);
+      JS_SetPropertyStr(ctx, global, c"Function".as_ptr(), hook_func);
       JS_FreeValue(ctx, global);
       CODEGEN_DISABLED
         .with(|m| m.borrow_mut().insert(ctx, (saved_eval, saved_func)));
@@ -2178,4 +2323,15 @@ pub extern "C" fn v8__Isolate__SetUseCounterCallback(
     return;
   }
   iso_state(isolate).use_counter_callback = Some(callback);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__Isolate__SetModifyCodeGenerationFromStringsCallback(
+  isolate: *mut RealIsolate,
+  callback: ModifyCodeGenerationCallback,
+) {
+  if isolate.is_null() {
+    return;
+  }
+  iso_state(isolate).modify_code_generation_callback = Some(callback);
 }

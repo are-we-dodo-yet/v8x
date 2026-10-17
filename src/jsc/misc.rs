@@ -952,6 +952,29 @@ pub extern "C" fn icu_set_default_locale(locale: *const std::os::raw::c_char) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn icu_get_default_time_zone(
+  output: *mut std::os::raw::c_char,
+  output_len: usize,
+) -> usize {
+  const UNKNOWN: &[u8] = b"Etc/Unknown";
+  if output.is_null() {
+    return 0;
+  }
+  let len = UNKNOWN.len().min(output_len);
+  unsafe {
+    std::ptr::copy_nonoverlapping(UNKNOWN.as_ptr(), output.cast::<u8>(), len)
+  };
+  len
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn icu_set_default_time_zone(
+  _time_zone_id: *const std::os::raw::c_char,
+) -> bool {
+  false
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn v8__CompiledWasmModule__GetWireBytesRef(
   _this: *mut std::os::raw::c_void,
   _length: *mut std::os::raw::c_void,

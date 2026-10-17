@@ -1227,3 +1227,10 @@ pub extern "C" fn v8__Isolate__SetUseCounterCallback(
   _callback: *const std::os::raw::c_void,
 ) {
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__Isolate__SetModifyCodeGenerationFromStringsCallback(
+  _isolate: *mut std::os::raw::c_void,
+  _callback: *const std::os::raw::c_void,
+) {
+}

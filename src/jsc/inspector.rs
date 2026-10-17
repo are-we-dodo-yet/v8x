@@ -209,6 +209,29 @@ pub extern "C" fn v8_inspector__RemoteObject__toBytes(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn v8_inspector__V8InspectorSession__unwrapObject(
+  _session: *mut RawV8InspectorSession,
+  error: *mut *mut StringBuffer,
+  object_id: StringView,
+  _value: *mut *const Value,
+  _context: *mut *const Context,
+  _object_group: *mut *mut StringBuffer,
+) -> bool {
+  let message = if string_view_to_string(&object_id).parse::<u64>().is_ok() {
+    "Could not find object with given id"
+  } else {
+    "Invalid remote object id"
+  };
+  if !error.is_null() {
+    unsafe {
+      *error =
+        RealStringBuffer::boxed_from_utf16(message.encode_utf16().collect())
+    };
+  }
+  false
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn v8_inspector__V8InspectorSession__releaseObjectGroup(
   _session: *mut RawV8InspectorSession,
   _object_group: StringView,

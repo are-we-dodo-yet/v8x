@@ -1,7 +1,7 @@
 use super::quickjs_sys::*;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use temporal_rs::{Instant, TimeZone};
 use timezone_provider::zoneinfo64::ZoneInfo64TzdbProvider;
 
@@ -11,6 +11,130 @@ fn provider() -> &'static ZoneInfo64TzdbProvider<'static> {
     ZoneInfo64TzdbProvider::zoneinfo64_provider_for_testing()
       .expect("bundled zoneinfo64 data is invalid")
   })
+}
+
+const UNKNOWN_TIME_ZONE: &str = "Etc/Unknown";
+
+static DEFAULT_TIME_ZONE: RwLock<Option<(String, TimeZone)>> =
+  RwLock::new(None);
+
+fn parse_time_zone(id: &str) -> Option<TimeZone> {
+  if id == UNKNOWN_TIME_ZONE {
+    return None;
+  }
+  TimeZone::try_from_identifier_str_with_provider(id, provider()).ok()
+}
+
+fn zoneinfo_suffix(path: &str) -> Option<&str> {
+  path.rsplit_once("zoneinfo/").map(|(_, id)| id)
+}
+
+fn host_time_zone() -> String {
+  #[cfg(unix)]
+  {
+    if let Ok(tz) = std::env::var("TZ") {
+      let tz = tz.strip_prefix(':').unwrap_or(&tz);
+      let id = zoneinfo_suffix(tz).unwrap_or(tz);
+      if parse_time_zone(id).is_some() {
+        return id.to_string();
+      }
+    }
+    if let Ok(target) = std::fs::read_link("/etc/localtime")
+      && let Some(id) = target.to_str().and_then(zoneinfo_suffix)
+      && parse_time_zone(id).is_some()
+    {
+      return id.to_string();
+    }
+  }
+  UNKNOWN_TIME_ZONE.to_string()
+}
+
+fn default_time_zone() -> Option<TimeZone> {
+  DEFAULT_TIME_ZONE
+    .read()
+    .ok()
+    .and_then(|guard| guard.as_ref().map(|(_, time_zone)| *time_zone))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn icu_get_default_time_zone(
+  output: *mut c_char,
+  output_len: usize,
+) -> usize {
+  let id = DEFAULT_TIME_ZONE
+    .read()
+    .ok()
+    .and_then(|guard| guard.as_ref().map(|(id, _)| id.clone()))
+    .unwrap_or_else(host_time_zone);
+  if output.is_null() {
+    return 0;
+  }
+  let len = id.len().min(output_len);
+  unsafe {
+    std::ptr::copy_nonoverlapping(id.as_ptr(), output.cast::<u8>(), len)
+  };
+  len
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn icu_set_default_time_zone(
+  time_zone_id: *const c_char,
+) -> bool {
+  if time_zone_id.is_null() {
+    return false;
+  }
+  let Ok(id) = unsafe { CStr::from_ptr(time_zone_id) }.to_str() else {
+    return false;
+  };
+  let Some(time_zone) = parse_time_zone(id) else {
+    return false;
+  };
+  let value = (id != host_time_zone()).then(|| (id.to_string(), time_zone));
+  let Ok(mut guard) = DEFAULT_TIME_ZONE.write() else {
+    return false;
+  };
+  *guard = value;
+  true
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v82jsc_time_zone_offset(
+  time: i64,
+  offset: *mut c_int,
+) -> c_int {
+  let Some(time_zone) = default_time_zone() else {
+    return 0;
+  };
+  let Ok(instant) = Instant::from_epoch_milliseconds(time) else {
+    return 0;
+  };
+  let Ok(zoned) =
+    instant.to_zoned_date_time_iso_with_provider(time_zone, provider())
+  else {
+    return 0;
+  };
+  if !offset.is_null() {
+    unsafe {
+      *offset = (-(zoned.offset_nanoseconds() / 60_000_000_000)) as c_int
+    };
+  }
+  1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v82jsc_time_zone_name(
+  _time: i64,
+  _buf: *mut c_char,
+  _buf_size: usize,
+  len: *mut usize,
+) -> c_int {
+  if default_time_zone().is_none() {
+    return 0;
+  }
+  if !len.is_null() {
+    unsafe { *len = 0 };
+  }
+  1
 }
 
 unsafe fn value_to_string(

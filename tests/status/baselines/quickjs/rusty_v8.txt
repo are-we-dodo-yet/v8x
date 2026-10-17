@@ -1,6 +1,6 @@
 # Baseline: tests that PASS for backend=quickjs suite=rusty_v8.
 # Ratchet — CI goes red if any of these regress. Add new passes here
-# (run.mjs --update). 303 passing. DO NOT hand-sort; the
+# (run.mjs --update). 308 passing. DO NOT hand-sort; the
 # harness keeps this sorted + unique.
 rv8_slots::clear_all_context_slots
 rv8_slots::context_slots
@@ -33,6 +33,7 @@ rv8_test_api::clear_kept_objects
 rv8_test_api::clear_slots_annex_uninitialized
 rv8_test_api::code_cache
 rv8_test_api::code_cache_script
+rv8_test_api::code_generation_from_strings_callback
 rv8_test_api::compile_function
 rv8_test_api::compiled_wasm_module
 rv8_test_api::constructor
@@ -134,6 +135,7 @@ rv8_test_api::host_create_shadow_realm_context_callback
 rv8_test_api::host_defined_options
 rv8_test_api::icu_collator
 rv8_test_api::icu_date
+rv8_test_api::icu_default_time_zone
 rv8_test_api::icu_format
 rv8_test_api::icu_set_common_data_fail
 rv8_test_api::ignore_origin_source_map_empty_string
@@ -149,6 +151,7 @@ rv8_test_api::inspector_inspectable_drops_rust_impl_when_not_added
 rv8_test_api::inspector_schedule_pause_on_next_statement
 rv8_test_api::inspector_string_buffer
 rv8_test_api::inspector_string_view
+rv8_test_api::inspector_unwrap_object
 rv8_test_api::instance_of
 rv8_test_api::instance_template_with_internal_field
 rv8_test_api::isolate_data_slots
@@ -166,6 +169,7 @@ rv8_test_api::microtask_queue
 rv8_test_api::microtask_queue_new
 rv8_test_api::microtasks
 rv8_test_api::module_evaluation
+rv8_test_api::module_has_top_level_await
 rv8_test_api::module_instantiation_failures1
 rv8_test_api::module_snapshot
 rv8_test_api::module_stalled_top_level_await
@@ -207,6 +211,7 @@ rv8_test_api::return_value
 rv8_test_api::run_with_rust_allocator
 rv8_test_api::script_compile_and_run
 rv8_test_api::script_compiler_source
+rv8_test_api::script_id
 rv8_test_api::script_origin
 rv8_test_api::security_token
 rv8_test_api::set

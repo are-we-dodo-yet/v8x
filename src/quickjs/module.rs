@@ -42,7 +42,7 @@ use crate::quickjs::core::{
   iso_state, jsval_of, new_script_value, note_compilation_cache_miss,
   note_compiled_bytecode, record_host_defined_options_for_name,
   record_script_host_defined_options, record_script_resource_name,
-  script_source_value,
+  script_id_value, script_source_value,
 };
 use crate::quickjs::quickjs_sys::*;
 use crate::{
@@ -569,7 +569,7 @@ struct RawSource {
   cached_data: usize,
 }
 
-fn next_module_script_id() -> int {
+pub(crate) fn next_module_script_id() -> int {
   NEXT_MODULE_SCRIPT_ID.with(|next| {
     let id = next.get();
     next.set(id.saturating_add(1).max(1));
@@ -3630,6 +3630,11 @@ pub extern "C" fn v8__Script__GetUnboundScript(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn v8__Script__ScriptId(script: *const Script) -> i32 {
+  script_id_value(current_ctx(), script)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn v8__ScriptOrigin__CONSTRUCT(
   buf: *mut MaybeUninit<ScriptOrigin>,
   resource_name: *const Value,
@@ -4262,6 +4267,13 @@ pub extern "C" fn v8__UnboundScript__BindToCurrentContext(
   }
   let ctx = current_ctx();
   intern_dup::<Script>(ctx, jsval_of(script))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__UnboundScript__ScriptId(
+  script: *const UnboundScript,
+) -> i32 {
+  script_id_value(current_ctx(), script)
 }
 
 #[unsafe(no_mangle)]
@@ -5820,6 +5832,11 @@ pub extern "C" fn v8__Module__IsGraphAsync(this: *const Module) -> bool {
     handle_key(this),
     &mut std::collections::HashSet::new(),
   )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__Module__HasTopLevelAwait(this: *const Module) -> bool {
+  with_module_state(this, |m| m.is_async).unwrap_or(false)
 }
 
 #[unsafe(no_mangle)]

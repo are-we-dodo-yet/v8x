@@ -916,6 +916,26 @@ thread_local! {
   static SCRIPT_RESOURCE_NAMES: std::cell::RefCell<
     std::collections::HashMap<usize, std::string::String>,
   > = std::cell::RefCell::new(std::collections::HashMap::new());
+
+  static SCRIPT_IDS: std::cell::RefCell<std::collections::HashMap<usize, i32>> =
+    std::cell::RefCell::new(std::collections::HashMap::new());
+
+  static NEXT_SCRIPT_ID: std::cell::Cell<i32> = const { std::cell::Cell::new(1) };
+}
+
+fn script_id_for(key: usize) -> i32 {
+  if key == 0 {
+    return 0;
+  }
+  SCRIPT_IDS.with(|ids| {
+    *ids.borrow_mut().entry(key).or_insert_with(|| {
+      NEXT_SCRIPT_ID.with(|next| {
+        let id = next.get();
+        next.set(id.saturating_add(1).max(1));
+        id
+      })
+    })
+  })
 }
 
 // Pull the resource-name string out of a `ScriptOrigin` (slot 0 holds the
@@ -995,6 +1015,14 @@ pub extern "C" fn v8__Script__GetUnboundScript(
   script: *const Script,
 ) -> *const UnboundScript {
   intern::<UnboundScript>(jsval(script))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__Script__ScriptId(script: *const Script) -> i32 {
+  if script.is_null() {
+    return 0;
+  }
+  script_id_for(jsval(script) as usize)
 }
 
 #[unsafe(no_mangle)]
@@ -3452,6 +3480,11 @@ pub extern "C" fn v8__Module__IsGraphAsync(this: *const Module) -> bool {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn v8__Module__HasTopLevelAwait(this: *const Module) -> bool {
+  module_state(this).is_some_and(|m| m.is_async)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn v8__Module__IsSyntheticModule(this: *const Module) -> bool {
   module_state(this).is_some()
 }
@@ -3795,6 +3828,16 @@ pub extern "C" fn v8__UnboundScript__BindToCurrentContext(
     return ptr::null();
   }
   intern::<Script>(jsval(script))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8__UnboundScript__ScriptId(
+  script: *const UnboundScript,
+) -> i32 {
+  if script.is_null() {
+    return 0;
+  }
+  script_id_for(jsval(script) as usize)
 }
 
 #[unsafe(no_mangle)]

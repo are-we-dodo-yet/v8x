@@ -1187,10 +1187,10 @@ pub(crate) struct RemoteObjectBytes(Vec<u8>);
 
 #[unsafe(no_mangle)]
 pub extern "C" fn v8_inspector__V8InspectorSession__wrapObject(
-  _session: *mut RawV8InspectorSession,
+  session: *mut RawV8InspectorSession,
   context: *const Context,
   value: *const Value,
-  _object_group: StringView,
+  object_group: StringView,
   _generate_preview: bool,
 ) -> *mut RemoteObjectBytes {
   // Object groups exist so `releaseObjectGroup` can drop a batch of remote
@@ -1200,10 +1200,64 @@ pub extern "C" fn v8_inspector__V8InspectorSession__wrapObject(
   if ctx.is_null() || value.is_null() {
     return std::ptr::null_mut();
   }
-  let json = unsafe {
-    console_remote_object_json(ctx, crate::quickjs::core::jsval_of(value))
-  };
+  let value = crate::quickjs::core::jsval_of(value);
+  let mut json = unsafe { console_remote_object_json(ctx, value) };
+  if !session.is_null()
+    && (value.tag == JS_TAG_OBJECT || jsv_is_symbol(&value))
+    && json.ends_with('}')
+  {
+    let sess = unsafe { &mut *(session.cast::<cdp::CdpSession>()) };
+    let id = sess.wrap_object(ctx, value, string_view_to_string(&object_group));
+    json.pop();
+    json.push_str(&format!(r#","objectId":"{id}"}}"#));
+  }
   Box::into_raw(Box::new(RemoteObjectBytes(json.into_bytes())))
+}
+
+fn new_string_buffer(text: &str) -> *mut StringBuffer {
+  RealStringBuffer::boxed_from_utf16(text.encode_utf16().collect())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn v8_inspector__V8InspectorSession__unwrapObject(
+  session: *mut RawV8InspectorSession,
+  error: *mut *mut StringBuffer,
+  object_id: StringView,
+  value: *mut *const Value,
+  context: *mut *const Context,
+  object_group: *mut *mut StringBuffer,
+) -> bool {
+  let fail = |message: &str| {
+    if !error.is_null() {
+      unsafe { *error = new_string_buffer(message) };
+    }
+    false
+  };
+  if session.is_null() {
+    return fail("Cannot find context with specified id");
+  }
+  let Ok(id) = string_view_to_string(&object_id).parse::<u64>() else {
+    return fail("Invalid remote object id");
+  };
+  let sess = unsafe { &*(session.cast::<cdp::CdpSession>()) };
+  let Some((ctx, object, group)) = sess.unwrap_object(id) else {
+    return fail("Could not find object with given id");
+  };
+  if ctx.is_null() {
+    return fail("Cannot find context with specified id");
+  }
+  unsafe {
+    if !value.is_null() {
+      *value = crate::quickjs::core::intern_dup::<Value>(ctx, object);
+    }
+    if !context.is_null() {
+      *context = crate::quickjs::core::intern_ctx(ctx);
+    }
+    if !object_group.is_null() {
+      *object_group = new_string_buffer(group);
+    }
+  }
+  true
 }
 
 #[unsafe(no_mangle)]
@@ -1229,10 +1283,15 @@ pub extern "C" fn v8_inspector__RemoteObject__toBytes(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn v8_inspector__V8InspectorSession__releaseObjectGroup(
-  _session: *mut RawV8InspectorSession,
-  _object_group: StringView,
+  session: *mut RawV8InspectorSession,
+  object_group: StringView,
 ) {
   // No remote references are retained, so there is nothing to release.
+  if session.is_null() {
+    return;
+  }
+  let sess = unsafe { &mut *(session.cast::<cdp::CdpSession>()) };
+  sess.release_object_group(&string_view_to_string(&object_group));
 }
 
 unsafe extern "C" {
@@ -1652,6 +1711,7 @@ pub(crate) mod cdp {
     debugger_enabled: bool,
 
     objects: HashMap<u64, JSValue>,
+    wrapped_objects: HashMap<u64, (*mut JSContext, String)>,
     pending_evaluations: Vec<PendingEvaluation>,
     scripts: HashMap<String, String>,
     script_ids_by_url: HashMap<String, String>,
@@ -1687,6 +1747,7 @@ pub(crate) mod cdp {
         next_script_id: 1,
         debugger_enabled: false,
         objects: HashMap::new(),
+        wrapped_objects: HashMap::new(),
         pending_evaluations: Vec::new(),
         scripts: HashMap::new(),
         script_ids_by_url: HashMap::new(),
@@ -1789,6 +1850,45 @@ pub(crate) mod cdp {
       self.next_obj_id += 1;
       self.objects.insert(id, unsafe { JS_DupValue(ctx, v) });
       id
+    }
+
+    pub fn wrap_object(
+      &mut self,
+      ctx: *mut JSContext,
+      v: JSValue,
+      group: String,
+    ) -> u64 {
+      let id = self.retain(ctx, v);
+      self.wrapped_objects.insert(id, (ctx, group));
+      id
+    }
+
+    pub fn unwrap_object(
+      &self,
+      id: u64,
+    ) -> Option<(*mut JSContext, JSValue, &str)> {
+      let value = *self.objects.get(&id)?;
+      Some(match self.wrapped_objects.get(&id) {
+        Some((ctx, group)) => (*ctx, value, group.as_str()),
+        None => (current_ctx(), value, ""),
+      })
+    }
+
+    pub fn release_object_group(&mut self, group: &str) {
+      let ids: Vec<u64> = self
+        .wrapped_objects
+        .iter()
+        .filter(|(_, (_, g))| g == group)
+        .map(|(id, _)| *id)
+        .collect();
+      for id in ids {
+        let Some((ctx, _)) = self.wrapped_objects.remove(&id) else {
+          continue;
+        };
+        if let Some(v) = self.objects.remove(&id) {
+          unsafe { JS_FreeValue(ctx, v) };
+        }
+      }
     }
   }
 
