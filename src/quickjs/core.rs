@@ -1041,6 +1041,8 @@ pub extern "C" fn v8__Isolate__CreateParams__CONSTRUCT(
         0,
         std::mem::size_of::<crate::isolate_create_params::raw::CreateParams>(),
       );
+      let params = buf.cast::<crate::isolate_create_params::raw::CreateParams>();
+      (&raw mut (*params).allow_atomics_wait).write(true);
     }
   }
 }

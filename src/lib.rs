@@ -24,13 +24,7 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(unsafe_op_in_unsafe_fn)]
 
-#[cfg(all(
-  feature = "engine_v8",
-  any(feature = "engine_jsc", feature = "engine_quickjs")
-))]
-compile_error!(
-  "feature `v8` is mutually exclusive with `jsc` and `quickjs`; disable default features"
-);
+extern crate self as v8;
 
 #[cfg(feature = "engine_v8")]
 pub use rusty_v8::*;
@@ -46,6 +40,11 @@ macro_rules! shim {
     $(#[cfg(not(feature = "engine_v8"))] $item)*
   };
 }
+
+#[cfg(not(feature = "engine_v8"))]
+#[allow(dead_code)]
+#[path = "../vendor/rusty_v8/src/scope.rs"]
+mod scope;
 
 shim! {
 #[path = "../vendor/rusty_v8/src/array_buffer.rs"]
@@ -123,9 +122,6 @@ mod property_handler_flags;
 mod proxy;
 #[path = "../vendor/rusty_v8/src/regexp.rs"]
 mod regexp;
-#[allow(dead_code)]
-#[path = "../vendor/rusty_v8/src/scope.rs"]
-mod scope;
 #[path = "../vendor/rusty_v8/src/script.rs"]
 mod script;
 

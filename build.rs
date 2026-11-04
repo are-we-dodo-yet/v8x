@@ -119,6 +119,18 @@ fn main() {
 
   emit_bc_embed();
 
+  let mut engines = 0;
+  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() {
+    engines += 1;
+  }
+  if env::var_os("CARGO_FEATURE_ENGINE_V8").is_some() {
+    engines += 1;
+  }
+  if env::var_os("CARGO_FEATURE_ENGINE_QUICKJS").is_some() {
+    engines += 1;
+  }
+  assert_eq!(engines, 1, "exactly one js engine backend should be enabled: --features quickjs | v8 | jsc");
+
   // --- JSC backend: generate full FFI bindings from the SDK header. ---
   // `src/jsc_sys.rs` `include!`s the output, so the complete JavaScriptCore
   // C API is available without hand-written externs.
@@ -126,8 +138,7 @@ fn main() {
   {
     panic!(
       "the JSC backends (features `jsc`/`engine_jsc`/`system_jsc`) are \
-       macOS-only; build with `--no-default-features --features quickjs` \
-       on {target_os}"
+       macOS-only; build with `--features quickjs | v8` on {target_os}"
     );
   }
   if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() {

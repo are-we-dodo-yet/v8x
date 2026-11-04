@@ -2,15 +2,15 @@
 # The library target remains `v8` so the vendored rusty_v8 integration tests
 # can run unmodified. Downstream crates should depend on this package under an
 # explicit alias when both rusty_v8 and v8x are available.
-name = "v8x"
-version = "152.2.0-rc.1"
+name = "dodo-v8x"
+version = "152.2.0"
 edition = "2024"
 authors = ["Divy Srivastava <me@littledivy.com>"]
 description = "Engine agnostic JavaScript"
 build = "build.rs"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/littledivy/v8x"
-homepage = "https://github.com/littledivy/v8x"
+repository = "https://github.com/are-we-dodo-yet/v8x"
+homepage = "https://github.com/are-we-dodo-yet/v8x"
 readme = "README.md"
 keywords = ["v8", "javascript", "quickjs", "javascriptcore", "engine"]
 categories = ["api-bindings", "development-tools"]
@@ -49,23 +49,16 @@ include = [
   "/vendor/wamr/LICENSE",
 ]
 
-# docs.rs can't build the default JSC/WebKit backend (macOS-only, needs a
-# vendored WebKit tree that is not shipped in the crate). Document the portable
-# QuickJS backend instead.
 [package.metadata.docs.rs]
 no-default-features = true
-features = ["quickjs"]
+features = ["v8"]
 
 [lib]
 name = "v8"
 path = "src/lib.rs"
 
 [features]
-# Exactly ONE engine backend must be active (they each define the v8__* C ABI;
-# two would collide at link time). The default is the VENDORED JSC: it backs
-# every module with real JSC records (zero gaps, no string rewriter) — the
-# shippable engine, like deno ships v8 statically.
-default = ["engine_jsc", "vendor_jsc"]
+default = []
 engine_jsc = []
 engine_quickjs = []
 engine_v8 = ["dep:rusty_v8"]
@@ -112,7 +105,7 @@ timezone_provider = { version = "0.2.3", features = ["zoneinfo64"] }
 
 [build-dependencies]
 cc = "1.0"
-bindgen = "0.70"
+bindgen = "0.73.2"
 
 # Dev-deps needed to compile the vendored rusty_v8 integration tests
 # (registered as [[test]] targets below). Versions track vendor/rusty_v8.
