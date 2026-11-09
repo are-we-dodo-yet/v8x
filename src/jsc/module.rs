@@ -552,6 +552,7 @@ unsafe fn can_alloc_promise_with_margin(ctx: JSContextRef) -> bool {
 /// backends are macOS, so the pthread stack-introspection APIs are available.
 /// Returns `usize::MAX` (i.e. "don't guard") if introspection looks wrong, so a
 /// surprising platform can never spuriously trip the guard below.
+#[cfg(target_os = "macos")]
 fn stack_headroom_bytes() -> usize {
   unsafe extern "C" {
     fn pthread_self() -> *mut std::ffi::c_void;
@@ -572,6 +573,40 @@ fn stack_headroom_bytes() -> usize {
     let size = pthread_get_stacksize_np(t);
     let low = base.wrapping_sub(size);
     if base == 0 || size == 0 || sp > base || sp < low {
+      return usize::MAX;
+    }
+    sp - low
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn stack_headroom_bytes() -> usize {
+  use std::ffi::c_void;
+  #[repr(C, align(16))]
+  struct PthreadAttr([u8; 128]);
+  unsafe extern "C" {
+    fn pthread_self() -> usize;
+    fn pthread_getattr_np(t: usize, attr: *mut PthreadAttr) -> i32;
+    fn pthread_attr_getstack(
+      attr: *const PthreadAttr,
+      addr: *mut *mut c_void,
+      size: *mut usize,
+    ) -> i32;
+    fn pthread_attr_destroy(attr: *mut PthreadAttr) -> i32;
+  }
+  let probe: u8 = 0;
+  let sp = &probe as *const u8 as usize;
+  unsafe {
+    let mut attr = PthreadAttr([0; 128]);
+    if pthread_getattr_np(pthread_self(), &mut attr) != 0 {
+      return usize::MAX;
+    }
+    let mut low: *mut c_void = ptr::null_mut();
+    let mut size: usize = 0;
+    let rc = pthread_attr_getstack(&attr, &mut low, &mut size);
+    pthread_attr_destroy(&mut attr);
+    let low = low as usize;
+    if rc != 0 || low == 0 || size == 0 || sp < low || sp > low + size {
       return usize::MAX;
     }
     sp - low
@@ -2806,11 +2841,13 @@ pub extern "C" fn v8__Module__InstantiateModule(
 
   m.status = ModuleStatus::Instantiating;
   let specs = m.import_specifiers.clone();
+  let attributes = m.import_attributes.clone();
 
   let mut deps: Vec<*const Module> = Vec::new();
-  for spec in &specs {
+  for (idx, spec) in specs.iter().enumerate() {
     crate::jsc::core::restore_current(iso);
-    let dep = unsafe { resolve_dependency(context, cb, this, spec, 0) };
+    let attrs = attributes.get(idx).map(Vec::as_slice).unwrap_or(&[]);
+    let dep = unsafe { resolve_dependency(context, cb, this, spec, attrs) };
     if dep.is_null() {
       continue;
     }
@@ -2836,7 +2873,7 @@ unsafe fn resolve_dependency(
   cb: ResolveModuleCallback,
   referrer: *const Module,
   spec: &str,
-  attr_type: i32,
+  attrs: &[(std::string::String, std::string::String)],
 ) -> *const Module {
   let ctx = ctx_of(context) as JSContextRef;
   if ctx.is_null() {
@@ -2855,25 +2892,21 @@ unsafe fn resolve_dependency(
   // deno's resolve callback reads import attributes as StaticImport triples
   // [key, value, source_offset] and derives the requested module type, which it
   // matches against the request — so a JSON/wasm edge must carry its `type`.
-  let type_str = match attr_type {
-    3 => Some("json"),
-    2 => Some("webassembly"),
-    _ => None,
-  };
   let attrs_arr = unsafe {
-    if let Some(ts) = type_str {
-      let mk = |s: &str| -> JSValueRef {
-        let c = std::ffi::CString::new(s).unwrap();
-        let js = JSStringCreateWithUTF8CString(c.as_ptr());
-        let v = JSValueMakeString(ctx, js);
-        JSStringRelease(js);
-        v
-      };
-      let triple = [mk("type"), mk(ts), JSValueMakeNumber(ctx, 0.0)];
-      JSObjectMakeArray(ctx, 3, triple.as_ptr(), &mut exc)
-    } else {
-      JSObjectMakeArray(ctx, 0, ptr::null(), &mut exc)
+    let mk = |s: &str| -> JSValueRef {
+      let c = std::ffi::CString::new(s).unwrap_or_default();
+      let js = JSStringCreateWithUTF8CString(c.as_ptr());
+      let v = JSValueMakeString(ctx, js);
+      JSStringRelease(js);
+      v
+    };
+    let mut triples: Vec<JSValueRef> = Vec::with_capacity(attrs.len() * 3);
+    for (k, v) in attrs {
+      triples.push(mk(k));
+      triples.push(mk(v));
+      triples.push(JSValueMakeNumber(ctx, 0.0));
     }
+    JSObjectMakeArray(ctx, triples.len(), triples.as_ptr(), &mut exc)
   };
   let attrs_handle = intern_ctx::<FixedArray>(ctx, attrs_arr as JSValueRef);
 
@@ -2920,7 +2953,15 @@ fn native_populate(
     } else {
       unsafe { v82jsc_module_request_attr_type(this_native, idx as i32) }
     };
-    let dep = unsafe { resolve_dependency(context, cb, this, spec, attr_type) };
+    let type_attr = match attr_type {
+      3 => Some("json"),
+      2 => Some("webassembly"),
+      _ => None,
+    };
+    let attrs: Vec<(std::string::String, std::string::String)> = type_attr
+      .map(|t| vec![("type".into(), t.into())])
+      .unwrap_or_default();
+    let dep = unsafe { resolve_dependency(context, cb, this, spec, &attrs) };
     if dep.is_null() {
       linkable = false;
       continue;

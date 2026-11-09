@@ -24,7 +24,7 @@ Engine features are mutually exclusive; enable exactly one:
   columns: 3,
   [*feature*], [*engine*], [*notes*],
   [`quickjs`], [QuickJS-ng, vendored + static], [works everywhere, \~1 MB, fastest build],
-  [`jsc`], [WebKit JSCOnly, built from source], [macOS; shippable, JIT-enabled],
+  [`jsc`], [WebKit JSCOnly, built from source], [macOS and Linux; shippable, JIT-enabled],
   [`system_jsc`], [Apple's `JavaScriptCore.framework`], [macOS; zero engine bytes in your binary],
   [`v8`], [V8, through the upstream `v8` crate], [same engine as stock rusty_v8; needs `default-features = false`],
 )
@@ -59,8 +59,20 @@ using the `jsc` backend must be codesigned with the JIT entitlement:
 codesign -s - -f --entitlements tools/jit-entitlements.plist ./your-binary
 ```
 
-The `system_jsc` and `quickjs` backends don't need this. The test harness in
-the v8x repo does it automatically.
+The `system_jsc` and `quickjs` backends don't need this, and Linux needs no
+signing at all. The test harness in the v8x repo does it automatically.
+
+== Linux note: build dependencies
+
+The vendored JSC build runs WebKit's cmake project, which needs cmake, ninja,
+ruby, perl, python3, a C++ compiler and the ICU development headers. The
+resulting binary links the host ICU and libstdc++ dynamically. The repo ships
+a `flake.nix` whose default devShell provides every tool:
+
+```sh
+nix develop
+cargo build --features jsc
+```
 
 == Building from the repo
 

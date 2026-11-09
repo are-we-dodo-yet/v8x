@@ -26,9 +26,10 @@ unchanged and runs on the engine you picked.
 #table(
   columns: 3,
   [*engine*], [*feature*], [*platforms*],
-  [JavaScriptCore (WebKit JSCOnly, built from source)], [`jsc`], [macOS],
+  [JavaScriptCore (WebKit JSCOnly, built from source)], [`jsc`], [macOS, Linux],
   [JavaScriptCore (Apple's system framework)], [`system_jsc`], [macOS],
   [QuickJS-ng (vendored, static)], [`quickjs`], [any],
+  [V8 (upstream `v8` crate)], [`v8`], [any],
 )
 
 One engine is active at a time. The usual reason to swap is binary size:

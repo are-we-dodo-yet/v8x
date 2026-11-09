@@ -1,10 +1,10 @@
 name: WebKit static-lib release
 
-# Builds the vendored JavaScriptCore (JSCOnly, static) ONCE and publishes the
-# archive (.a libs + generated headers) as a GitHub release, keyed by the
-# vendor/webkit submodule commit. CI + local builds download this instead of the
-# multi-hour WebKit build — the rusty_v8 prebuilt-static-lib model. Re-run after
-# bumping the submodule or changing a webkit-*.patch.
+# Builds the vendored JavaScriptCore (JSCOnly, static) ONCE per platform and
+# publishes the archives (.a libs + generated headers) as a GitHub release,
+# keyed by the vendor/webkit submodule commit. CI + local builds download this
+# instead of the multi-hour WebKit build -- the rusty_v8 prebuilt-static-lib
+# model. Re-run after bumping the submodule or changing a webkit-*.patch.
 on:
   workflow_dispatch:
 
@@ -13,11 +13,33 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    name: build-${{ matrix.tag }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - os: macos-latest
+            tag: macos-arm64
+          - os: ubuntu-latest
+            tag: linux-x86_64
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build ruby libicu-dev clang
+          echo "CC=clang" >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
 
       - name: Build static JavaScriptCore
         run: bash tools/setup_webkit.sh
@@ -28,22 +50,25 @@ jobs:
           set -euo pipefail
           PIN="$(git -C vendor/webkit rev-parse HEAD)"
           SHORT="$(git -C vendor/webkit rev-parse --short HEAD)"
-          TARBALL="webkit-jsc-static-macos-arm64-${SHORT}.tar.gz"
+          TARBALL="webkit-jsc-static-${{ matrix.tag }}-${SHORT}.tar.gz"
           REL="vendor/webkit/WebKitBuild/JSCOnly/Release"
           # Ship the libs + generated headers / header-maps the glue compile
           # needs. The Headers/PrivateHeaders dirs are symlink trees into the
           # WebKit source, so the consumer also checks out the submodule; we
           # preserve the symlinks here (no -h).
-          tar -czf "$TARBALL" -C "$REL" \
-            lib \
-            HeaderMaps \
-            JavaScriptCore/Headers \
-            JavaScriptCore/PrivateHeaders \
-            JavaScriptCore/DerivedSources \
-            WTF/Headers \
-            bmalloc/Headers \
-            bmalloc/PrivateHeaders \
-            ICU/Headers
+          items=(
+            lib
+            JavaScriptCore/Headers
+            JavaScriptCore/PrivateHeaders
+            JavaScriptCore/DerivedSources
+            WTF/Headers
+            bmalloc/Headers
+            bmalloc/PrivateHeaders
+          )
+          for opt in HeaderMaps ICU/Headers; do
+            [ -e "$REL/$opt" ] && items+=("$opt")
+          done
+          tar -czf "$TARBALL" -C "$REL" "${items[@]}"
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "tag=webkit-$SHORT" >> "$GITHUB_OUTPUT"
           echo "pin=$PIN" >> "$GITHUB_OUTPUT"
@@ -55,8 +80,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.pkg.outputs.tag }}"
-          # Recreate the release so re-runs (same submodule pin) refresh the asset.
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" "${{ steps.pkg.outputs.tarball }}" \
-            --title "WebKit JSC static libs ($TAG)" \
-            --notes "Prebuilt JSCOnly static JavaScriptCore for vendor/webkit@${{ steps.pkg.outputs.pin }}. Consumed by build.rs / CI via JSC_VENDOR_BUILD_DIR. macOS arm64."
+          TARBALL="${{ steps.pkg.outputs.tarball }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$TARBALL" --clobber
+          else
+            gh release create "$TAG" "$TARBALL" \
+              --title "WebKit JSC static libs ($TAG)" \
+              --notes "Prebuilt JSCOnly static JavaScriptCore for vendor/webkit@${{ steps.pkg.outputs.pin }}. Consumed by build.rs / CI via JSC_VENDOR_BUILD_DIR. One asset per platform (macos-arm64, linux-x86_64)."
+          fi

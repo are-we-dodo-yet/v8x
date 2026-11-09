@@ -7,8 +7,13 @@ The crate is literally named `v8` (version `152.2.0`) so it drops into Deno via
 | backend id | features | engine | OS |
 |---|---|---|---|
 | `jsc` | `engine_jsc,vendor_jsc` | WebKit JSCOnly built from source (shippable) | macOS |
+| `jsc-linux` | `engine_jsc,vendor_jsc` | same vendored JSCOnly build, host ICU + libstdc++ | Linux |
 | `sys-jsc` | `system_jsc` | Apple's `JavaScriptCore.framework` | macOS |
 | `quickjs` | `quickjs` | vendored quickjs-ng, static | any |
+| `v8` | `v8` | upstream rusty_v8 (reference cell, no shim) | any |
+
+`jsc` and `jsc-linux` share the features and source; they are separate cells so
+each OS ratchets its own pass set.
 
 Backend implementation lives in **`src/jsc/`** and **`src/quickjs/`** — these
 define the ~570 `v8__*` C-ABI symbols the vendored rusty_v8 Rust surface calls.
@@ -47,7 +52,10 @@ tests/status/baselines/<backend>/<suite>.txt   # one passing test name per line
 
 ## Local loop
 
-Prereqs: Node 22+, Rust stable. macOS for the JSC backends.
+Prereqs: Node 22+, Rust stable. macOS for `sys-jsc`. The vendored `jsc`
+backend builds on macOS and Linux; the Linux build needs cmake, ninja, ruby,
+perl, python3, clang or gcc, and ICU dev headers (`nix develop` in this repo
+provides all of them, `flake.nix`).
 
 ### rusty_v8 (cheapest — start here)
 
@@ -80,15 +88,15 @@ dashboard. Tracked in #2 (assigned to divybot).
 ### deno_core (needs a deno checkout)
 
 ```bash
-# clone + patch deno exactly like CI (tools/deno/DENO_REF pins the commit):
+# clone dodo exactly like CI (tools/deno/DENO_REF pins the commit) and point
+# its v8 dependency at this checkout:
 DENO_REF=$(cat tools/deno/DENO_REF)
 git -C ../deno init -q && git -C ../deno fetch --depth 1 \
-  https://github.com/denoland/deno "$DENO_REF" && git -C ../deno checkout -q FETCH_HEAD
-sed "s#/Users/divy/gh/v82jsc#$PWD#g" tools/deno/deno-jsc-integration.patch | git -C ../deno apply --3way -
-# select your backend's v8 features in the patch's [patch.crates-io] v8 line:
-perl -0pi -e 's/"engine_jsc", "vendor_jsc"/"quickjs"/g' ../deno/Cargo.toml   # example
+  https://github.com/are-we-dodo-yet/dodo "$DENO_REF" && git -C ../deno checkout -q FETCH_HEAD
+perl -pi -e 's#^v8 = \{ package = "dodo-v8x", version = "[^"]+"#v8 = { package = "dodo-v8x", path = "$ENV{PWD}"#' ../deno/Cargo.toml
 
-# runs `cargo nextest run -p deno_core` against our shim (no full deno binary):
+# runs `cargo nextest run -p deno_core` with the backend's features from
+# config.json cargo_args_by_backend against our shim (no full deno binary):
 node tests/harness/run.mjs deno_core quickjs --deno-dir=../deno
 ```
 

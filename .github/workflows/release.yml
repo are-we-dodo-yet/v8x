@@ -20,7 +20,8 @@ jobs:
   deno:
     name: deno-${{ matrix.backend }}
     runs-on: macos-15
-    timeout-minutes: 120
+    timeout-minutes: 180
+    continue-on-error: ${{ matrix.experimental || false }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     strategy:
@@ -28,12 +29,16 @@ jobs:
       matrix:
         include:
           - backend: jsc
-            features: '"engine_jsc", "vendor_jsc"'
+            v8x_features: '"engine_jsc", "vendor_jsc"'
+            cli_features: hmr
             ninja: true
+            experimental: true
           - backend: sys-jsc
-            features: '"system_jsc"'
+            v8x_features: '"system_jsc"'
+            cli_features: hmr
+            experimental: true
           - backend: quickjs
-            features: '"quickjs"'
+            cli_features: quickjs
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,18 +82,33 @@ jobs:
           path: vendor/webkit/WebKitBuild
           key: webkit-${{ runner.os }}-${{ steps.wk.outputs.sha }}-${{ hashFiles('patches/webkit-*.patch', 'tools/setup_webkit.sh') }}
 
-      - name: Clone deno + apply the v82jsc integration patch
+      - name: Clone dodo + point its v8 dependency at this checkout
         run: |
           set -euo pipefail
           DENO_REF="$(cat tools/deno/DENO_REF)"
           mkdir -p ../deno && git -C ../deno init -q
-          git -C ../deno remote add origin https://github.com/denoland/deno
+          git -C ../deno remote add origin https://github.com/are-we-dodo-yet/dodo
           git -C ../deno fetch --depth 1 origin "$DENO_REF"
           git -C ../deno checkout -q FETCH_HEAD
-          sed "s#/Users/divy/gh/v8x#${GITHUB_WORKSPACE}#g" \
-            tools/deno/deno-jsc-integration.patch > /tmp/deno.patch
-          (cd ../deno && patch -p1 < /tmp/deno.patch)
-          perl -0pi -e 's/"engine_jsc", "vendor_jsc"/${{ matrix.features }}/g' ../deno/Cargo.toml
+          perl -pi -e 's#^v8 = \{ package = "dodo-v8x", version = "[^"]+"#v8 = { package = "dodo-v8x", path = "$ENV{GITHUB_WORKSPACE}"#' ../deno/Cargo.toml
+          if [ -n '${{ matrix.v8x_features }}' ]; then
+            perl -pi -e 's#^(v8 = \{ package = "dodo-v8x", .*features = \["simdutf")\]#$1, ${{ matrix.v8x_features }}]#' ../deno/Cargo.toml
+          fi
+          grep -F "path = \"$GITHUB_WORKSPACE\"" ../deno/Cargo.toml
+      # dodo's aarch64-apple-darwin rustflags link with -fuse-ld=lld; the
+      # runner image has none, so fetch the same prebuilt ld64.lld dodo CI uses.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Install dodo's macOS lld
+        working-directory: ../deno
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 -- tests/util/std
+          ./tools/install_prebuilt.js ld64.lld
+          echo "$PWD/third_party/prebuilt/mac" >> "$GITHUB_PATH"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -99,8 +119,7 @@ jobs:
         working-directory: ../deno
         run: |
           set -euo pipefail
-          export RUSTFLAGS="-C link-arg=-fuse-ld=/usr/bin/ld -C link-arg=-L$(xcrun --show-sdk-path)/usr/lib"
-          cargo build --release --bin deno --features hmr
+          cargo build --release --bin deno --no-default-features --features "${{ matrix.cli_features }}"
           codesign --force --sign - --entitlements cli/entitlements.plist target/release/deno
 
       - name: Package the binary

@@ -66,7 +66,7 @@ const IGNORE = new Set([
   ...archIgnore,
 ]);
 const isMac = os.platform() === "darwin";
-const needsCodesign = isMac && b.os === "macos"; // JSC JIT entitlements
+const needsCodesign = isMac && b.features.includes("jsc"); // JSC JIT entitlements
 const ENT = path.join(ROOT, "tools/jit-entitlements.plist");
 
 // Per-test wall-clock timeout. libtest has NO per-test timeout, and we run with
@@ -373,6 +373,7 @@ async function runCargoSelf() {
 async function runCargoDeno() {
   const denoDir = reqDenoDir();
   ensureDenoV8Patch(denoDir);
+  const cargoArgs = (s.cargo_args_by_backend || {})[backendId] || [];
   const env = {
     CARGO_TERM_COLOR: "never",
     NEXTEST_EXPERIMENTAL_LIBTEST_JSON: "1",
@@ -385,6 +386,7 @@ async function runCargoDeno() {
         "list",
         "-p",
         s.package,
+        ...cargoArgs,
         "--message-format",
         "json",
         "--list-type",
@@ -411,6 +413,7 @@ async function runCargoDeno() {
       "run",
       "-p",
       s.package,
+      ...cargoArgs,
       "--message-format",
       "libtest-json",
       "--message-format-version",
@@ -642,7 +645,9 @@ function report(res) {
     for (const name of r.regressions) {
       const out = _sets.failOutput.get(name);
       if (!out) continue;
-      const clipped = out.length > 8000 ? out.slice(-8000) : out;
+      const clipped = out.length > 8000
+        ? `${out.slice(0, 4000)}\n... [${out.length - 8000} bytes clipped] ...\n${out.slice(-4000)}`
+        : out;
       console.error(`\n--- output: ${name} ---\n${clipped}\n--- end ---`);
     }
   }

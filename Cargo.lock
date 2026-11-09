@@ -189,7 +189,7 @@ dependencies = [
 
 [[package]]
 name = "dodo-v8x"
-version = "152.2.0"
+version = "152.2.1"
 dependencies = [
  "align-data",
  "bindgen 0.73.2",

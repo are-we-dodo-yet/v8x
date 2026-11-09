@@ -3145,6 +3145,7 @@ unsafe fn build_resolution_map(
   cb: ResolveModuleCallback,
   source_cb: Option<ResolveSourceCallback>,
   root: *const Module,
+  walked: &mut Vec<*const Module>,
 ) -> bool {
   use std::collections::HashSet;
   let mut visited: HashSet<usize> = HashSet::new();
@@ -3154,6 +3155,20 @@ unsafe fn build_resolution_map(
     if !visited.insert(handle_key(m)) {
       continue;
     }
+    if m != root
+      && with_module_state(m, |st| {
+        matches!(
+          st.status,
+          ModuleStatus::Instantiated
+            | ModuleStatus::Evaluating
+            | ModuleStatus::Evaluated
+        )
+      })
+      .unwrap_or(false)
+    {
+      continue;
+    }
+    walked.push(m);
     let Some((base, specs, attrs, src_imports, deferred_imports)) =
       with_module_state(m, |st| {
         (
@@ -5303,8 +5318,10 @@ pub extern "C" fn v8__Module__InstantiateModule(
   let ctx = ctx_of(context);
   if !ctx.is_null() {
     super::snapshot::restore_snapshot_module_exports(ctx);
-    if !unsafe { build_resolution_map(ctx, context, cb, source_callback, this) }
-    {
+    let mut walked = Vec::new();
+    if !unsafe {
+      build_resolution_map(ctx, context, cb, source_callback, this, &mut walked)
+    } {
       return MaybeBool::Nothing;
     }
     let module_def = unsafe { compile_module_for_instantiation(ctx, this) };
@@ -5314,6 +5331,13 @@ pub extern "C" fn v8__Module__InstantiateModule(
       unsafe { annotate_module_link_exception(ctx, this) };
       with_module_state(this, |m| m.status = ModuleStatus::Errored);
       return MaybeBool::Nothing;
+    }
+    for m in walked {
+      with_module_state(m, |state| {
+        if state.status == ModuleStatus::Uninstantiated {
+          state.status = ModuleStatus::Instantiated;
+        }
+      });
     }
   }
 

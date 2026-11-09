@@ -18,3 +18,6 @@ __cmake_systeminformation/
 
 # typst docs site build output (tools/build-site.sh)
 /_site/
+
+# direnv cache (nix devShell)
+/.direnv/

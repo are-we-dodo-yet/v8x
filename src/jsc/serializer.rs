@@ -161,7 +161,10 @@ mod tag {
   pub const BIGINT: u8 = 15;
 }
 
-unsafe fn global_ctor(ctx: JSContextRef, name: *const c_char) -> JSObjectRef {
+pub(crate) unsafe fn global_ctor(
+  ctx: JSContextRef,
+  name: *const c_char,
+) -> JSObjectRef {
   unsafe {
     let g = JSContextGetGlobalObject(ctx);
     let k = JSStringCreateWithUTF8CString(name);

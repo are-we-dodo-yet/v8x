@@ -1,6 +1,6 @@
 # Baseline: tests that PASS for backend=sys-jsc suite=deno_core.
 # Ratchet — CI goes red if any of these regress. Add new passes here
-# (run.mjs --update). 385 passing. DO NOT hand-sort; the
+# (run.mjs --update). 437 passing. DO NOT hand-sort; the
 # harness keeps this sorted + unique.
 deno_core::arena::raw_arena::tests::test_add_clear_many
 deno_core::arena::raw_arena::tests::test_add_remove_many
@@ -33,6 +33,15 @@ deno_core::async_cancel::tests::future_cancels_itself_and_hangs
 deno_core::async_cancel::tests::future_cancels_itself_before_completion
 deno_core::async_cell::tests::async_ref_cell_borrow
 deno_core::async_cell::tests::async_ref_cell_try_borrow
+deno_core::async_cell::tests::fast_path_cancelled_before_poll_releases_borrow
+deno_core::async_cell::tests::fast_path_construct_two_then_await_in_order
+deno_core::async_cell::tests::fast_path_construct_two_then_await_reversed
+deno_core::async_cell::tests::fast_path_double_poll_panics
+deno_core::async_cell::tests::fast_path_drop_queued_without_poll
+deno_core::async_cell::tests::fast_path_drop_without_poll_releases_borrow
+deno_core::async_cell::tests::fast_path_engages_only_when_uncontended
+deno_core::async_cell::tests::fast_path_mixed_modes_keep_fifo
+deno_core::async_cell::tests::fast_path_needs_no_waker
 deno_core::async_cell::tests::rc_ref_map
 deno_core::convert::tests::derive_from_struct
 deno_core::convert::tests::derive_from_tuple_struct
@@ -53,11 +62,24 @@ deno_core::convert::tests::test_uint8array
 deno_core::convert::tests::test_vec
 deno_core::cppgc::tests::inheriting_types_list_contains_derived
 deno_core::error::tests::test_format_file_name
+deno_core::error::tests::test_is_aggregate_error_handles_malformed_constructors
+deno_core::error::tests::test_is_aggregate_error_handles_throwing_accessors
+deno_core::error::tests::test_is_aggregate_error_recognizes_builtin
+deno_core::error::tests::test_js_error_from_v8_exception_bounds_shared_aggregate_graph
+deno_core::error::tests::test_js_error_from_v8_exception_handles_crossed_aggregate_cycle
+deno_core::error::tests::test_js_error_from_v8_exception_handles_cyclic_aggregate_error
+deno_core::error::tests::test_js_error_from_v8_exception_handles_throwing_aggregate_element
+deno_core::error::tests::test_js_error_from_v8_exception_truncates_deep_cause_chain
 deno_core::error::tests::test_js_error_v8_roundtrip_preserves_shape
 deno_core::error::tests::test_parse_eval_origin
 deno_core::error::tests::test_relative_specifier_within
 deno_core::error::tests::test_to_v8_error_handles_null_builder_exception
 deno_core::error::tests::test_to_v8_error_handles_stack_overflow_in_builder
+deno_core::extensions::tests::op_tables::generic_extension_reaches_realm_as_static
+deno_core::extensions::tests::op_tables::generic_extension_table_is_per_monomorphization
+deno_core::extensions::tests::op_tables::generic_extension_table_is_static
+deno_core::extensions::tests::op_tables::non_generic_extension_reaches_realm_as_static
+deno_core::extensions::tests::op_tables::non_generic_extension_table_is_static
 deno_core::extensions::tests::test_include_js
 deno_core::external::tests::test_external
 deno_core::external::tests::test_external_deref_after_take
@@ -78,6 +100,8 @@ deno_core::gotham_state::tests::try_borrow
 deno_core::gotham_state::tests::try_borrow_mut
 deno_core::gotham_state::tests::try_take
 deno_core::gotham_state::tests::type_alias
+deno_core::io::buffer_strategy::tests::huge_hints_are_capped
+deno_core::io::buffer_strategy::tests::huge_u64_hints_are_saturating_and_capped
 deno_core::io::buffer_strategy::tests::resource_known_hint
 deno_core::io::buffer_strategy::tests::resource_no_hint
 deno_core::io::buffers::tests::bufmutview_grow
@@ -89,9 +113,9 @@ deno_core::io::buffers::tests::bufview_split
 deno_core::module_specifier::tests::test_deserialize_module_specifier
 deno_core::module_specifier::tests::test_resolve_import
 deno_core::module_specifier::tests::test_resolve_import_error
-deno_core::modules::map::test_render_js_wasm_module
-deno_core::modules::map::test_render_js_wasm_module_global_import
-deno_core::modules::map::test_render_js_wasm_module_global_unwrap
+deno_core::modules::map::wasm::test_render_js_wasm_module
+deno_core::modules::map::wasm::test_render_js_wasm_module_global_import
+deno_core::modules::map::wasm::test_render_js_wasm_module_global_unwrap
 deno_core::modules::module_map_data::tests::module_name_map_test
 deno_core::modules::tests::builtin_core_module
 deno_core::modules::tests::dyn_import_borrow_mut_error
@@ -104,11 +128,16 @@ deno_core::modules::tests::ext_module_loader_relative
 deno_core::modules::tests::import_meta_filename_dirname
 deno_core::modules::tests::import_meta_resolve
 deno_core::modules::tests::invalid_utf8_module
+deno_core::modules::tests::lazy_loaded_internal_module_ignores_loader_remapping
 deno_core::modules::tests::loader_disappears_after_error
 deno_core::modules::tests::main_and_side_module
+deno_core::modules::tests::module_map_rejects_user_ext_imports_after_resolution
 deno_core::modules::tests::no_duplicate_loads
 deno_core::modules::tests::recursive_load_main_with_code
+deno_core::modules::tests::repro_reimport_instantiated_internal_module_from_user_graph
+deno_core::modules::tests::safe_array_iterator_remains_done_after_array_grows
 deno_core::modules::tests::slow_never_ready_modules
+deno_core::modules::tests::test_cached_synthetic_esm_evaluation_allows_dynamic_import
 deno_core::modules::tests::test_circular_load
 deno_core::modules::tests::test_code_cache_not_created_for_json_module
 deno_core::modules::tests::test_concurrent_redirect_load
@@ -116,11 +145,14 @@ deno_core::modules::tests::test_custom_module_type_callback_computed
 deno_core::modules::tests::test_custom_module_type_callback_synthetic
 deno_core::modules::tests::test_custom_module_type_default
 deno_core::modules::tests::test_dyn_import_async_graph_with_lazy_esm_no_stall
+deno_core::modules::tests::test_fs_module_loader_rejects_non_json_for_json_request
+deno_core::modules::tests::test_json_text_bytes_modules
 deno_core::modules::tests::test_lazy_load_esm_evaluates_pre_instantiated_sibling
 deno_core::modules::tests::test_lazy_loaded_esm
 deno_core::modules::tests::test_lazy_loaded_esm_aliased_specifier
 deno_core::modules::tests::test_lazy_loaded_esm_aliased_via_import
 deno_core::modules::tests::test_lazy_loaded_esm_concurrent_loads
+deno_core::modules::tests::test_lazy_loaded_esm_rejects_non_lazy_cached_module
 deno_core::modules::tests::test_lazy_loaded_esm_with_tla_no_panic
 deno_core::modules::tests::test_lazy_loaded_script
 deno_core::modules::tests::test_lazy_loaded_script_not_found
@@ -135,6 +167,7 @@ deno_core::modules::tests::test_tla_with_tick_scheduled_no_hang
 deno_core::modules::tests::test_validate_import_attributes_callback
 deno_core::modules::tests::test_validate_import_attributes_callback2
 deno_core::modules::tests::test_validate_import_attributes_default
+deno_core::ops::tests::op_ctx_stays_small
 deno_core::runtime::op_driver::erased_future::tests::test_in_arena_selfref_easy
 deno_core::runtime::op_driver::erased_future::tests::test_in_arena_selfref_hard
 deno_core::runtime::op_driver::erased_future::tests::test_in_arena_simple
@@ -142,7 +175,11 @@ deno_core::runtime::op_driver::erased_future::tests::test_outside_arena
 deno_core::runtime::op_driver::future_arena::tests::test_double_free
 deno_core::runtime::op_driver::future_arena::tests::test_drop_after_arena
 deno_core::runtime::op_driver::future_arena::tests::test_exceed_arena
+deno_core::runtime::op_driver::future_arena::tests::test_growth_keeps_futures_pinned
 deno_core::runtime::op_driver::future_arena::tests::test_mapping
+deno_core::runtime::op_driver::future_arena::tests::test_oversized_future_is_boxed
+deno_core::runtime::op_driver::future_arena::tests::test_retired_chunk_slots_are_reused
+deno_core::runtime::op_driver::future_arena::tests::test_slots_are_reused
 deno_core::runtime::op_driver::tests::test_driver::case_1_futures_unordered::count_1_2::scheduling_1_OpScheduling__Eager
 deno_core::runtime::op_driver::tests::test_driver::case_1_futures_unordered::count_1_2::scheduling_2_OpScheduling__Lazy
 deno_core::runtime::op_driver::tests::test_driver::case_1_futures_unordered::count_1_2::scheduling_3_OpScheduling__Deferred
@@ -222,6 +259,8 @@ deno_core::runtime::tests::jsrealm::js_realm_ref_unref_ops
 deno_core::runtime::tests::jsrealm::lazy
 deno_core::runtime::tests::jsrealm::test_set_format_exception_callback_realms
 deno_core::runtime::tests::misc::dangling_shared_isolate
+deno_core::runtime::tests::misc::eval_context_code_cache_error_is_cache_miss
+deno_core::runtime::tests::misc::eval_context_code_cache_key_sees_full_source
 deno_core::runtime::tests::misc::generic_in_extension_middleware
 deno_core::runtime::tests::misc::icu
 deno_core::runtime::tests::misc::inspector
@@ -295,9 +334,18 @@ deno_core::runtime::tests::ops::test_op_return_serde_v8_error
 deno_core::runtime::tests::ops::test_ref_unref_ops
 deno_core::runtime::tests::ops::test_sync_op_serialize_object_with_numbers_as_keys
 deno_core::runtime::tests::ops::test_top_level_await
+deno_core::runtime::tests::snapshot::shared_array_buffer_primordial_fresh_runtime
+deno_core::snapshot_format::tests::roundtrip_scalars
+deno_core::snapshot_format::tests::seq_and_option_and_map
+deno_core::snapshot_format::tests::strings_borrow_the_buffer
+deno_core::snapshot_format::tests::truncated_input_is_detected
+deno_core::snapshot_format::tests::version_mismatch_is_detected
+deno_core::source_map::tests::test_lru_cache_evicts_least_recently_used
 deno_core::source_map::tests::test_source_map_relative_path_existing_file
 deno_core::source_map::tests::test_source_map_relative_path_nonexistent_file
 deno_core::source_map::tests::test_source_mapper
+deno_core::source_map::tests::test_source_mapper_caches_are_bounded
+deno_core::source_map::tests::test_source_mapper_memoizes_misses
 deno_core::tasks::tests::test_spawner_parallel
 deno_core::tasks::tests::test_spawner_serial
 deno_core::tests::located_script_name
@@ -324,6 +372,9 @@ deno_core::uv_compat::tests::new_tcp_constructor
 deno_core::uv_compat::tests::new_tty_constructor
 deno_core::uv_compat::tests::new_write_constructor
 deno_core::uv_compat::tests::phase_ordering_idle_prepare_check
+deno_core::uv_compat::tests::pipe_accept_keeps_only_the_tokio_fd_owner
+deno_core::uv_compat::tests::pipe_bound_connect_transfers_raw_fd_ownership
+deno_core::uv_compat::tests::pipe_listener_transfers_raw_fd_ownership
 deno_core::uv_compat::tests::pipe_open_not_active_until_read_start
 deno_core::uv_compat::tests::prepare_fires_callback
 deno_core::uv_compat::tests::read_stop_clears_reading
@@ -371,6 +422,7 @@ deno_core::uv_compat::tests::tty_shutdown_fires_callback
 deno_core::uv_compat::tests::tty_write_and_read_through_pty
 deno_core::uv_compat::tests::uv_now_returns_nonzero_after_delay
 deno_core::uv_compat::tests::uv_write_callback_is_deferred
+deno_core::web_timeout::tests::timer_wake_from_another_thread
 deno_core::webidl::tests::any
 deno_core::webidl::tests::byte_string
 deno_core::webidl::tests::constrained_sequence_one_of

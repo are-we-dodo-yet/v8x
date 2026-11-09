@@ -60,8 +60,18 @@ REL="$WK/WebKitBuild/JSCOnly/Release"
 # entitlement (JSC JIT). See the v8x README / Deno integration notes.
 JITDIR="$REL/Source/JavaScriptCore/CMakeFiles/JavaScriptCoreJIT.dir"
 if [ -d "$JITDIR" ] && [ ! -f "$REL/lib/libJavaScriptCoreJIT.a" ]; then
-  find "$JITDIR" -name '*.o' -print0 \
-    | xargs -0 xcrun libtool -static -o "$REL/lib/libJavaScriptCoreJIT.a"
+  if [ "$(uname)" = Darwin ]; then
+    find "$JITDIR" -name '*.o' -print0 \
+      | xargs -0 xcrun libtool -static -o "$REL/lib/libJavaScriptCoreJIT.a"
+  else
+    find "$JITDIR" -name '*.o' -print0 \
+      | xargs -0 ar crs "$REL/lib/libJavaScriptCoreJIT.a"
+  fi
+fi
+
+if [ "$(uname)" != Darwin ]; then
+  echo "Static JSC built: $REL/lib/{libJavaScriptCore,libWTF,libbmalloc}.a"
+  exit 0
 fi
 
 # Keep the offlineasm LLInt/IPInt assembly intact under the deno binary link's
