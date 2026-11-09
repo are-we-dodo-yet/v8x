@@ -71,11 +71,6 @@ fn emit_quickjs_cache_tag(manifest_dir: &Path) {
 }
 
 fn main() {
-  if env::var_os("CARGO_FEATURE_ENGINE_V8").is_some() {
-    println!("cargo:rerun-if-changed=build.rs");
-    return;
-  }
-
   let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
   // Init the pinned rusty_v8 submodule + apply our 2 patches BEFORE compile:
@@ -83,6 +78,11 @@ fn main() {
   // must be materialized for either backend. (Engines are set up separately,
   // only for the QuickJS path.)
   setup_vendor(&manifest_dir, "rusty_v8");
+
+  if env::var_os("CARGO_FEATURE_ENGINE_V8").is_some() {
+    println!("cargo:rerun-if-changed=build.rs");
+    return;
+  }
 
   // The vendored crate's `binding.rs` does
   // `include!(env!("RUSTY_V8_SRC_BINDING_PATH"))` to pull in the bindgen

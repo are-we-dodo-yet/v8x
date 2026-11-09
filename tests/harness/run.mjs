@@ -413,6 +413,7 @@ async function runCargoDeno() {
       "run",
       "-p",
       s.package,
+      ...cargoArgs,
       "--message-format",
       "libtest-json",
       "--message-format-version",

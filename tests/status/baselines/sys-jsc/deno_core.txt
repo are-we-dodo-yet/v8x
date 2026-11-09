@@ -89,9 +89,9 @@ deno_core::io::buffers::tests::bufview_split
 deno_core::module_specifier::tests::test_deserialize_module_specifier
 deno_core::module_specifier::tests::test_resolve_import
 deno_core::module_specifier::tests::test_resolve_import_error
-deno_core::modules::map::test_render_js_wasm_module
-deno_core::modules::map::test_render_js_wasm_module_global_import
-deno_core::modules::map::test_render_js_wasm_module_global_unwrap
+deno_core::modules::map::wasm::test_render_js_wasm_module
+deno_core::modules::map::wasm::test_render_js_wasm_module_global_import
+deno_core::modules::map::wasm::test_render_js_wasm_module_global_unwrap
 deno_core::modules::module_map_data::tests::module_name_map_test
 deno_core::modules::tests::builtin_core_module
 deno_core::modules::tests::dyn_import_borrow_mut_error

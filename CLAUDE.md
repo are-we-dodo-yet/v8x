@@ -9,6 +9,7 @@ The crate is literally named `v8` (version `152.2.0`) so it drops into Deno via
 | `jsc` | `engine_jsc,vendor_jsc` | WebKit JSCOnly built from source (shippable) | macOS |
 | `sys-jsc` | `system_jsc` | Apple's `JavaScriptCore.framework` | macOS |
 | `quickjs` | `quickjs` | vendored quickjs-ng, static | any |
+| `v8` | `v8` | upstream rusty_v8 (reference cell, no shim) | any |
 
 Backend implementation lives in **`src/jsc/`** and **`src/quickjs/`** — these
 define the ~570 `v8__*` C-ABI symbols the vendored rusty_v8 Rust surface calls.

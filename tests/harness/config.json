@@ -22,6 +22,13 @@
       "features": "quickjs",
       "os": "any",
       "comment": "Vendored quickjs-ng, statically linked. Cross-platform."
+    },
+    {
+      "id": "v8",
+      "label": "V8",
+      "features": "v8",
+      "os": "any",
+      "comment": "Upstream rusty_v8 re-exported through the v8x surface. Reference cell: what stock V8 passes."
     }
   ],
   "suites": [
@@ -63,9 +70,10 @@
       "comment": "cargo nextest run -p deno_core in the patched deno checkout. Links our v8 shim but does NOT build the full deno binary.",
       "package": "deno_core",
       "cargo_args_by_backend": {
-        "jsc": ["--no-default-features", "--features", "reactor-tokio"],
-        "sys-jsc": ["--no-default-features", "--features", "reactor-tokio"],
-        "quickjs": ["--no-default-features", "--features", "quickjs,reactor-tokio"]
+        "jsc": ["--no-default-features", "--features", "jsc,reactor-tokio"],
+        "sys-jsc": ["--no-default-features", "--features", "system_jsc,reactor-tokio"],
+        "quickjs": ["--no-default-features", "--features", "quickjs,reactor-tokio"],
+        "v8": ["--no-default-features", "--features", "v8,v8_use_custom_libcxx,reactor-tokio"]
       },
       "ignore": [],
       "ignore_by_backend": {

@@ -34,6 +34,9 @@ jobs:
           - backend: quickjs
             os: ubuntu-latest
             features: quickjs
+          - backend: v8
+            os: ubuntu-latest
+            features: v8
           - backend: sys-jsc
             os: macos-latest
             features: system_jsc
@@ -262,14 +265,14 @@ jobs:
         include:
           - backend: jsc
             os: macos-15
-            v8x_features: '"engine_jsc", "vendor_jsc"'
             ninja: true
             experimental: true
           - backend: sys-jsc
             os: macos-15
-            v8x_features: '"system_jsc"'
             experimental: true
           - backend: quickjs
+            os: ubuntu-latest
+          - backend: v8
             os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -316,9 +319,6 @@ jobs:
           git -C ../deno fetch --depth 1 origin "$DENO_REF"
           git -C ../deno checkout -q FETCH_HEAD
           perl -pi -e 's#^v8 = \{ package = "dodo-v8x", version = "[^"]+"#v8 = { package = "dodo-v8x", path = "$ENV{GITHUB_WORKSPACE}"#' ../deno/Cargo.toml
-          if [ -n '${{ matrix.v8x_features }}' ]; then
-            perl -pi -e 's#^(v8 = \{ package = "dodo-v8x", .*features = \["simdutf")\]#$1, ${{ matrix.v8x_features }}]#' ../deno/Cargo.toml
-          fi
           grep -F "path = \"$GITHUB_WORKSPACE\"" ../deno/Cargo.toml
       # dodo's aarch64-apple-darwin rustflags link with -fuse-ld=lld; the
       # runner image has none, so fetch the same prebuilt ld64.lld dodo CI uses.
