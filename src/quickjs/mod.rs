@@ -1756,6 +1756,7 @@ mod api_test {
     assert_bigint_words_preserve_u64_max();
     assert_wasm_streaming_respects_explicit_microtasks();
     assert_duplicate_module_requests_resolve_once();
+    assert_instantiate_marks_graph_and_skips_linked_modules();
     assert_dynamic_import_gets_empty_host_options();
 
     unsafe {
@@ -2258,6 +2259,92 @@ mod api_test {
     assert_eq!(root.instantiate_module(scope, resolve_callback), Some(true));
     assert_eq!(RESOLVE_COUNT.with(|count| count.get()), 1);
     DEPENDENCY.with(|slot| slot.borrow_mut().take());
+  }
+
+  fn assert_instantiate_marks_graph_and_skips_linked_modules() {
+    thread_local! {
+      static MODULES: std::cell::RefCell<
+        std::collections::HashMap<std::string::String, v8::Global<v8::Module>>,
+      > = std::cell::RefCell::new(std::collections::HashMap::new());
+      static RESOLVED: std::cell::RefCell<Vec<std::string::String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    fn resolve_callback<'scope>(
+      context: v8::Local<'scope, v8::Context>,
+      specifier: v8::Local<'scope, v8::String>,
+      _attributes: v8::Local<'scope, v8::FixedArray>,
+      _referrer: v8::Local<'scope, v8::Module>,
+    ) -> Option<v8::Local<'scope, v8::Module>> {
+      v8::callback_scope!(unsafe scope, context);
+      let specifier = specifier.to_rust_string_lossy(scope);
+      RESOLVED.with(|r| r.borrow_mut().push(specifier.clone()));
+      MODULES.with(|m| {
+        m.borrow()
+          .get(&specifier)
+          .map(|module| v8::Local::new(scope, module))
+      })
+    }
+
+    fn compile<'s>(
+      scope: &mut v8::PinScope<'s, '_>,
+      name: &str,
+      code: &str,
+    ) -> v8::Local<'s, v8::Module> {
+      let source = v8::String::new(scope, code).unwrap();
+      let origin_name = v8::String::new(scope, name).unwrap();
+      let origin = v8::ScriptOrigin::new(
+        scope,
+        origin_name.into(),
+        0,
+        0,
+        false,
+        -1,
+        None,
+        false,
+        false,
+        true,
+        None,
+      );
+      let mut source = v8::script_compiler::Source::new(source, Some(&origin));
+      let module =
+        v8::script_compiler::compile_module(scope, &mut source).unwrap();
+      MODULES.with(|m| {
+        m.borrow_mut()
+          .insert(name.to_string(), v8::Global::new(scope, module))
+      });
+      module
+    }
+
+    let isolate = &mut v8::Isolate::new(Default::default());
+    let scope = std::pin::pin!(v8::HandleScope::new(isolate));
+    let scope = &mut scope.init();
+    let context = v8::Context::new(scope, Default::default());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let dep = compile(scope, "dep", "export const value = 2;");
+    let mid = compile(scope, "mid", "export { value } from 'dep';");
+    let root = compile(scope, "root", "export { value } from 'mid';");
+
+    assert_eq!(mid.instantiate_module(scope, resolve_callback), Some(true));
+    assert_eq!(RESOLVED.with(|r| r.borrow().clone()), vec!["dep"]);
+    assert_eq!(mid.get_status(), v8::ModuleStatus::Instantiated);
+    assert_eq!(dep.get_status(), v8::ModuleStatus::Instantiated);
+
+    RESOLVED.with(|r| r.borrow_mut().clear());
+    assert_eq!(root.instantiate_module(scope, resolve_callback), Some(true));
+    assert_eq!(RESOLVED.with(|r| r.borrow().clone()), vec!["mid"]);
+    assert_eq!(root.get_status(), v8::ModuleStatus::Instantiated);
+
+    let value = root.evaluate(scope).unwrap();
+    assert!(value.is_promise());
+    assert_eq!(root.get_status(), v8::ModuleStatus::Evaluated);
+    let ns = root.get_module_namespace().to_object(scope).unwrap();
+    let key = v8::String::new(scope, "value").unwrap();
+    let got = ns.get(scope, key.into()).unwrap();
+    assert_eq!(got.to_rust_string_lossy(scope), "2");
+
+    MODULES.with(|m| m.borrow_mut().clear());
   }
 
   fn assert_finalization_registry_token_is_weak() {
