@@ -72,6 +72,7 @@ fn emit_quickjs_cache_tag(manifest_dir: &Path) {
 
 fn main() {
   let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+  let _vendor_lock = lock_vendor_tree(&manifest_dir);
 
   // Init the pinned rusty_v8 submodule + apply our 2 patches BEFORE compile:
   // src/lib.rs `#[path]`-includes its modules, so the vendored Rust API surface
@@ -189,6 +190,20 @@ fn main() {
     // wasm-c-api in src/quickjs/wasm.rs.
     build_wamr(&manifest_dir);
   }
+}
+
+fn lock_vendor_tree(manifest_dir: &Path) -> std::fs::File {
+  let path = manifest_dir.join("vendor/.v8x-build.lock");
+  let file = std::fs::OpenOptions::new()
+    .create(true)
+    .write(true)
+    .truncate(false)
+    .open(&path)
+    .unwrap_or_else(|e| panic!("open {}: {e}", path.display()));
+  file
+    .lock()
+    .unwrap_or_else(|e| panic!("lock {}: {e}", path.display()));
+  file
 }
 
 /// Init the pinned vendor submodules and apply our patch files on top.

@@ -1,6 +1,7 @@
 /target
 /reference
 vendor/quickjs-ng/.git
+vendor/.v8x-build.lock
 
 # Claude Code local state
 .claude/

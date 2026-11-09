@@ -77,7 +77,7 @@ cargo build --features jsc
 == Building from the repo
 
 ```sh
-git clone --recursive https://github.com/littledivy/v8x
+git clone --recursive https://github.com/are-we-dodo-yet/v8x
 cd v8x
 cargo build --no-default-features --features quickjs   # no engine build step
 cargo build --features jsc                             # builds WebKit from source
