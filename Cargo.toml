@@ -3,7 +3,7 @@
 # can run unmodified. Downstream crates should depend on this package under an
 # explicit alias when both rusty_v8 and v8x are available.
 name = "dodo-v8x"
-version = "152.2.0"
+version = "152.2.1"
 edition = "2024"
 authors = ["Divy Srivastava <me@littledivy.com>"]
 description = "Engine agnostic JavaScript"

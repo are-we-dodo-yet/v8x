@@ -62,6 +62,11 @@
       "kind": "cargo-deno",
       "comment": "cargo nextest run -p deno_core in the patched deno checkout. Links our v8 shim but does NOT build the full deno binary.",
       "package": "deno_core",
+      "cargo_args_by_backend": {
+        "jsc": ["--no-default-features", "--features", "reactor-tokio"],
+        "sys-jsc": ["--no-default-features", "--features", "reactor-tokio"],
+        "quickjs": ["--no-default-features", "--features", "quickjs,reactor-tokio"]
+      },
       "ignore": [],
       "ignore_by_backend": {
         "quickjs": []

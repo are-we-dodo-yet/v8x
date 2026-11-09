@@ -99,17 +99,16 @@ fn main() {
   // (c_int on MSVC, c_uint elsewhere).
   let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
   let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
-  let gen_file = if env::var("CARGO_CFG_TARGET_VENDOR").as_deref()
-    == Ok("apple")
-  {
-    "gen/src_binding_debug_aarch64-apple-darwin.rs"
-  } else if target_os == "windows" && target_env == "msvc" {
-    "gen/src_binding_release_x86_64-pc-windows-msvc.rs"
-  } else {
-    // Itanium mangling without the Apple underscore: linux-gnu/musl, the BSDs,
-    // android, windows-gnu.
-    "gen/src_binding_debug_x86_64-unknown-linux-gnu.rs"
-  };
+  let gen_file =
+    if env::var("CARGO_CFG_TARGET_VENDOR").as_deref() == Ok("apple") {
+      "gen/src_binding_debug_aarch64-apple-darwin.rs"
+    } else if target_os == "windows" && target_env == "msvc" {
+      "gen/src_binding_release_x86_64-pc-windows-msvc.rs"
+    } else {
+      // Itanium mangling without the Apple underscore: linux-gnu/musl, the BSDs,
+      // android, windows-gnu.
+      "gen/src_binding_debug_x86_64-unknown-linux-gnu.rs"
+    };
   let binding_path = manifest_dir.join(gen_file);
   println!(
     "cargo:rustc-env=RUSTY_V8_SRC_BINDING_PATH={}",
@@ -129,13 +128,15 @@ fn main() {
   if env::var_os("CARGO_FEATURE_ENGINE_QUICKJS").is_some() {
     engines += 1;
   }
-  assert_eq!(engines, 1, "exactly one js engine backend should be enabled: --features quickjs | v8 | jsc");
+  assert_eq!(
+    engines, 1,
+    "exactly one js engine backend should be enabled: --features quickjs | v8 | jsc"
+  );
 
   // --- JSC backend: generate full FFI bindings from the SDK header. ---
   // `src/jsc_sys.rs` `include!`s the output, so the complete JavaScriptCore
   // C API is available without hand-written externs.
-  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() && target_os != "macos"
-  {
+  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() && target_os != "macos" {
     panic!(
       "the JSC backends (features `jsc`/`engine_jsc`/`system_jsc`) are \
        macOS-only; build with `--features quickjs | v8` on {target_os}"
@@ -386,11 +387,10 @@ fn apply_patch_series(root: &Path, sub: &str, prefix: &str) {
     // Already absolute (root is CARGO_MANIFEST_DIR). Deliberately NOT
     // canonicalize(): on Windows that yields a \\?\-prefixed path git rejects.
     let patch_str = patch.to_str().unwrap();
-    let applied = run_git(
-      &sub_dir,
-      &["apply", "--reverse", "--check", patch_str],
-    ) || run_git(&sub_dir, &["apply", patch_str])
-      || patch_fallback(root, sub, &patch);
+    let applied =
+      run_git(&sub_dir, &["apply", "--reverse", "--check", patch_str])
+        || run_git(&sub_dir, &["apply", patch_str])
+        || patch_fallback(root, sub, &patch);
     assert!(applied, "failed to apply patches/{name} onto {sub}");
     std::fs::write(&stamp, format!("{checksum}\n")).unwrap();
   }
@@ -451,10 +451,7 @@ fn patch_fallback(root: &Path, sub: &str, patch: &Path) -> bool {
   let out = String::from_utf8_lossy(&dry.stdout).into_owned()
     + &String::from_utf8_lossy(&dry.stderr);
   if out.contains("previously applied") {
-    println!(
-      "cargo:warning={} may already be applied",
-      patch.display()
-    );
+    println!("cargo:warning={} may already be applied", patch.display());
     return true;
   }
   false
@@ -827,15 +824,8 @@ fn generate_jsc_bindings() {
     .generate()
     .expect("bindgen failed to generate JavaScriptCore bindings");
 
-  // Edition 2024 requires `extern` blocks to be `unsafe extern`. bindgen 0.70
-  // still emits bare `extern "C" {`, so rewrite the block headers. (Function
-  // pointer typedefs already use `unsafe extern "C" fn(...)` and are skipped
-  // because the pattern below only matches a block-opening brace.)
-  let src = bindings
-    .to_string()
-    .replace("extern \"C\" {", "unsafe extern \"C\" {");
-
-  std::fs::write(&out_path, src).expect("failed to write jsc_bindings.rs");
+  std::fs::write(&out_path, bindings.to_string())
+    .expect("failed to write jsc_bindings.rs");
 
   println!("cargo:rerun-if-changed={header}");
 }

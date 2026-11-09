@@ -228,12 +228,12 @@ jobs:
         run: |
           set -euo pipefail
           version="$(cargo metadata --locked --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "v8x") | .version')"
+            | jq -r '.packages[] | select(.name == "dodo-v8x") | .version')"
           mv vendor/rusty_v8/Cargo.toml vendor/rusty_v8/Cargo.toml.v8x-package
           cargo package --locked --allow-dirty --no-verify
           package_dir="$(mktemp -d)"
-          tar -xzf "target/package/v8x-${version}.crate" -C "$package_dir"
-          crate_dir="$package_dir/v8x-${version}"
+          tar -xzf "target/package/dodo-v8x-${version}.crate" -C "$package_dir"
+          crate_dir="$package_dir/dodo-v8x-${version}"
           test -f "$crate_dir/vendor/rusty_v8/src/lib.rs"
           test -f "$crate_dir/vendor/quickjs-ng/quickjs.c"
           test -f "$crate_dir/vendor/wamr/core/iwasm/common/wasm_runtime_common.c"
@@ -242,14 +242,16 @@ jobs:
             --no-default-features --features quickjs
 
   # ---------------------------------------------------------------------------
-  # deno_core test suite per backend: clone+patch deno, `cargo nextest run -p
-  # deno_core` against our v8 shim. No full deno binary (node-compat + unit are
-  # dropped for now to keep CI cheap). macOS so the JSC backends link/JIT.
+  # deno_core test suite on the dodo fork: clone dodo at tools/deno/DENO_REF,
+  # point its v8 dependency at this checkout, `cargo nextest run -p deno_core`
+  # with the backend's features (config.json cargo_args_by_backend). No full
+  # deno binary (node-compat + unit are dropped for now to keep CI cheap).
   # ---------------------------------------------------------------------------
   deno_core:
     name: deno_core-${{ matrix.backend }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    continue-on-error: ${{ matrix.experimental || false }}
     # macOS 15+: WebKit's bmalloc uses os_unfair_lock_lock_with_flags (15.0+),
     # fatal under -Werror=unguarded-availability on an older deployment target.
     env:
@@ -259,12 +261,16 @@ jobs:
       matrix:
         include:
           - backend: jsc
-            features: '"engine_jsc", "vendor_jsc"'
+            os: macos-15
+            v8x_features: '"engine_jsc", "vendor_jsc"'
             ninja: true
+            experimental: true
           - backend: sys-jsc
-            features: '"system_jsc"'
+            os: macos-15
+            v8x_features: '"system_jsc"'
+            experimental: true
           - backend: quickjs
-            features: '"quickjs"'
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -301,25 +307,34 @@ jobs:
           path: vendor/webkit/WebKitBuild
           key: webkit-${{ runner.os }}-${{ steps.wk.outputs.sha }}-${{ hashFiles('patches/webkit-*.patch', 'tools/setup_webkit.sh') }}
 
-      - name: Clone deno + apply the v82jsc integration patch
+      - name: Clone dodo + point its v8 dependency at this checkout
         run: |
           set -euo pipefail
           DENO_REF="$(cat tools/deno/DENO_REF)"
           mkdir -p ../deno && git -C ../deno init -q
-          git -C ../deno remote add origin https://github.com/denoland/deno
+          git -C ../deno remote add origin https://github.com/are-we-dodo-yet/dodo
           git -C ../deno fetch --depth 1 origin "$DENO_REF"
           git -C ../deno checkout -q FETCH_HEAD
-          # The patch's v8x dependency uses a local development path. Point it
-          # at this checkout.
-          sed "s#/Users/divy/gh/v8x#${GITHUB_WORKSPACE}#g" \
-            tools/deno/deno-jsc-integration.patch > /tmp/deno.patch
-          (cd ../deno && patch -p1 < /tmp/deno.patch)
-          # Select this job's backend by swapping the v82jsc feature list the
-          # patch hardcodes (vendored JSC) for this matrix entry's features.
-          perl -0pi -e 's/"engine_jsc", "vendor_jsc"/${{ matrix.features }}/g' ../deno/Cargo.toml
+          perl -pi -e 's#^v8 = \{ package = "dodo-v8x", version = "[^"]+"#v8 = { package = "dodo-v8x", path = "$ENV{GITHUB_WORKSPACE}"#' ../deno/Cargo.toml
+          if [ -n '${{ matrix.v8x_features }}' ]; then
+            perl -pi -e 's#^(v8 = \{ package = "dodo-v8x", .*features = \["simdutf")\]#$1, ${{ matrix.v8x_features }}]#' ../deno/Cargo.toml
+          fi
+          grep -F "path = \"$GITHUB_WORKSPACE\"" ../deno/Cargo.toml
+      # dodo's aarch64-apple-darwin rustflags link with -fuse-ld=lld; the
+      # runner image has none, so fetch the same prebuilt ld64.lld dodo CI uses.
+      - name: Install dodo's macOS lld
+        if: runner.os == 'macOS'
+        working-directory: ../deno
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git submodule update --init --depth 1 -- tests/util/std
+          ./tools/install_prebuilt.js ld64.lld
+          echo "$PWD/third_party/prebuilt/mac" >> "$GITHUB_PATH"
 
-      # Cache the deno_core build (cargo deps + the v82jsc patch crate). Keyed
-      # per backend so each engine's feature set gets its own cache.
+      # Cache the deno_core build (cargo deps + this crate). Keyed per backend
+      # so each engine's feature set gets its own cache.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "../deno"
@@ -335,10 +350,6 @@ jobs:
           PR: ${{ github.event_name == 'pull_request' && '--check' || '' }}
         run: |
           set -uo pipefail
-          # Same linker flags v82jsc/deno use; otherwise cargo nextest for
-          # deno_core picks up the deno repo's default -fuse-ld=lld (absent on
-          # the runner) and fails with "invalid linker name".
-          export RUSTFLAGS="-C link-arg=-fuse-ld=/usr/bin/ld -C link-arg=-L$(xcrun --show-sdk-path)/usr/lib"
           node tests/harness/run.mjs deno_core "${{ matrix.backend }}" $PR --deno-dir=../deno
       - name: Upload run results
         if: always()

@@ -373,6 +373,7 @@ async function runCargoSelf() {
 async function runCargoDeno() {
   const denoDir = reqDenoDir();
   ensureDenoV8Patch(denoDir);
+  const cargoArgs = (s.cargo_args_by_backend || {})[backendId] || [];
   const env = {
     CARGO_TERM_COLOR: "never",
     NEXTEST_EXPERIMENTAL_LIBTEST_JSON: "1",
@@ -385,6 +386,7 @@ async function runCargoDeno() {
         "list",
         "-p",
         s.package,
+        ...cargoArgs,
         "--message-format",
         "json",
         "--list-type",

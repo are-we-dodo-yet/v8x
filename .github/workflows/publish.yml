@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
           crate="$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name=="v8x") | .version')"
+            | jq -r '.packages[] | select(.name=="dodo-v8x") | .version')"
           echo "tag=$tag  crate=$crate"
           if [ "$tag" != "$crate" ]; then
             echo "::error::pushed tag 'v$tag' does not match Cargo.toml version '$crate' — aborting publish"
@@ -63,12 +63,12 @@ jobs:
           set -euo pipefail
           cargo check --locked --no-default-features --features quickjs
           version="$(cargo metadata --locked --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "v8x") | .version')"
+            | jq -r '.packages[] | select(.name == "dodo-v8x") | .version')"
           mv vendor/rusty_v8/Cargo.toml vendor/rusty_v8/Cargo.toml.v8x-package
           cargo package --locked --allow-dirty --no-verify
           package_dir="$(mktemp -d)"
-          tar -xzf "target/package/v8x-${version}.crate" -C "$package_dir"
-          crate_dir="$package_dir/v8x-${version}"
+          tar -xzf "target/package/dodo-v8x-${version}.crate" -C "$package_dir"
+          crate_dir="$package_dir/dodo-v8x-${version}"
           test -f "$crate_dir/vendor/rusty_v8/src/lib.rs"
           test -f "$crate_dir/vendor/quickjs-ng/quickjs.c"
           test -f "$crate_dir/vendor/wamr/core/iwasm/common/wasm_runtime_common.c"
