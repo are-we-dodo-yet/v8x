@@ -133,29 +133,23 @@ fn main() {
     "exactly one js engine backend should be enabled: --features quickjs | v8 | jsc"
   );
 
-  // --- JSC backend: generate full FFI bindings from the SDK header. ---
-  // `src/jsc_sys.rs` `include!`s the output, so the complete JavaScriptCore
-  // C API is available without hand-written externs.
-  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() && target_os != "macos" {
+  // --- JSC backend: vendored WebKit JSCOnly build, or system framework ---
+  let engine_jsc = env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some();
+  let vendor_jsc = env::var_os("CARGO_FEATURE_VENDOR_JSC").is_some();
+  if engine_jsc && !vendor_jsc && target_os != "macos" {
     panic!(
-      "the JSC backends (features `jsc`/`engine_jsc`/`system_jsc`) are \
-       macOS-only; build with `--features quickjs | v8` on {target_os}"
+      "the system JavaScriptCore backend (feature `system_jsc`) is macOS-only; \
+       build with `--features jsc` (vendored WebKit) or `quickjs` on {target_os}"
     );
   }
-  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() {
-    generate_jsc_bindings();
-  }
-
-  // --- JSC backend: vendored WebKit JSCOnly build, or system framework ---
-  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some()
-    && env::var_os("CARGO_FEATURE_VENDOR_JSC").is_some()
-  {
+  if engine_jsc && vendor_jsc {
     build_vendored_jsc(&manifest_dir);
     return;
   }
 
   #[cfg(target_os = "macos")]
-  if env::var_os("CARGO_FEATURE_ENGINE_JSC").is_some() {
+  if engine_jsc {
+    generate_jsc_bindings(None);
     println!("cargo:rustc-link-lib=framework=JavaScriptCore");
     // `jsc_version_string` reads the JavaScriptCore bundle's version via
     // CoreFoundation (CFBundle*/CFString*/CFRelease). Those symbols are only
@@ -615,10 +609,23 @@ fn build_vendored_jsc(manifest_dir: &std::path::Path) {
     }
   }
 
+  let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+  let macos = target_os == "macos";
+
+  if macos {
+    generate_jsc_bindings(None);
+  } else {
+    generate_jsc_bindings(Some(&build_dir.join("JavaScriptCore/Headers")));
+  }
+
   // Compile the native ES-module glue (src/jsc/native_modules.cpp) against the
   // vendored WebKit private headers and link it. Replaces the rewrite_es_module
   // string rewriter with real JSModuleRecords.
-  build_native_modules_glue(manifest_dir, &webkit, &build_dir);
+  if macos {
+    build_native_modules_glue(manifest_dir, &webkit, &build_dir);
+  } else {
+    build_native_modules_glue_cc(manifest_dir, &webkit, &build_dir);
+  }
 
   println!("cargo:rustc-link-search=native={}", lib_dir.display());
   // JavaScriptCore + JavaScriptCoreJIT are split cmake targets; link both as
@@ -638,11 +645,10 @@ fn build_vendored_jsc(manifest_dir: &std::path::Path) {
   }
   println!("cargo:rustc-link-lib=static=WTF");
   println!("cargo:rustc-link-lib=static=bmalloc");
-  println!("cargo:rustc-link-lib=c++");
   println!("cargo:rerun-if-changed={}", jsc_a.display());
 
-  #[cfg(target_os = "macos")]
-  {
+  if macos {
+    println!("cargo:rustc-link-lib=c++");
     // ICU + the system frameworks WTF/JSC depend on.
     println!("cargo:rustc-link-lib=icucore");
     for fw in ["CoreFoundation", "Foundation", "Security"] {
@@ -656,7 +662,137 @@ fn build_vendored_jsc(manifest_dir: &std::path::Path) {
         println!("cargo:rustc-link-search=native={}/usr/lib", sdk.trim());
       }
     }
+  } else {
+    link_system_icu();
+    println!("cargo:rustc-link-lib=atomic");
+    println!("cargo:rustc-link-lib=dl");
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:rustc-link-lib=m");
   }
+}
+
+fn link_system_icu() {
+  let probed = std::process::Command::new("pkg-config")
+    .args(["--libs", "icu-uc", "icu-i18n"])
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok());
+  match probed {
+    Some(flags) => {
+      for flag in flags.split_whitespace() {
+        if let Some(dir) = flag.strip_prefix("-L") {
+          println!("cargo:rustc-link-search=native={dir}");
+        } else if let Some(lib) = flag.strip_prefix("-l") {
+          println!("cargo:rustc-link-lib={lib}");
+        }
+      }
+    }
+    None => {
+      for lib in ["icui18n", "icuuc", "icudata"] {
+        println!("cargo:rustc-link-lib={lib}");
+      }
+    }
+  }
+}
+
+fn build_native_modules_glue_cc(
+  manifest_dir: &std::path::Path,
+  webkit: &std::path::Path,
+  build_dir: &std::path::Path,
+) {
+  let units = ["native_modules.cpp", "bytecode.cpp", "introspect.cpp"];
+  let jsc_src = webkit.join("Source/JavaScriptCore");
+
+  let mut build = cc::Build::new();
+  build.cpp(true).warnings(false).opt_level(3);
+  for unit in units {
+    let src = manifest_dir.join("src/jsc").join(unit);
+    build.file(&src);
+    println!("cargo:rerun-if-changed={}", src.display());
+  }
+  for (k, v) in [
+    ("BUILDING_JSCONLY__", None),
+    ("BUILDING_JavaScriptCore", None),
+    ("BUILDING_WEBKIT", Some("1")),
+    ("BUILDING_WITH_CMAKE", Some("1")),
+    ("HAVE_CONFIG_H", Some("1")),
+    ("PAS_BMALLOC", Some("1")),
+    ("STATICALLY_LINKED_WITH_WTF", None),
+    ("STATICALLY_LINKED_WITH_bmalloc", None),
+    ("NDEBUG", None),
+  ] {
+    build.define(k, v);
+  }
+  build
+    .include(build_dir)
+    .include(build_dir.join("JavaScriptCore/Headers"))
+    .include(build_dir.join("JavaScriptCore/PrivateHeaders"))
+    .include(build_dir.join("JavaScriptCore/PrivateHeaders/JavaScriptCore"))
+    .include(build_dir.join("JavaScriptCore/DerivedSources"))
+    .include(build_dir.join("JavaScriptCore/DerivedSources/inspector"))
+    .include(build_dir.join("JavaScriptCore/DerivedSources/runtime"))
+    .include(build_dir.join("JavaScriptCore/DerivedSources/yarr"))
+    .include(build_dir.join("WTF/Headers"))
+    .include(build_dir.join("bmalloc/Headers"))
+    .include(build_dir.join("bmalloc/PrivateHeaders"))
+    .include(&jsc_src);
+  for dir in jsc_source_include_dirs(&jsc_src) {
+    build.include(dir);
+  }
+  let icu_headers = build_dir.join("ICU/Headers");
+  if icu_headers.is_dir() {
+    build.flag(format!("-isystem{}", icu_headers.display()));
+  }
+  build
+    .std("c++23")
+    .flag("-fno-exceptions")
+    .flag("-fno-rtti")
+    .flag("-fvisibility=hidden")
+    .flag("-fvisibility-inlines-hidden")
+    .flag("-ffp-contract=off")
+    .flag_if_supported("-fno-slp-vectorize")
+    .flag("-w");
+  build.compile("v82jsc_native_modules");
+}
+
+fn jsc_source_include_dirs(jsc_src: &std::path::Path) -> Vec<PathBuf> {
+  const DIRS: &[&str] = &[
+    "API",
+    "assembler",
+    "b3",
+    "b3/air",
+    "bindings",
+    "builtins",
+    "bytecode",
+    "bytecompiler",
+    "dfg",
+    "disassembler",
+    "disassembler/ARM64",
+    "domjit",
+    "ftl",
+    "heap",
+    "debugger",
+    "inspector",
+    "inspector/agents",
+    "inspector/augmentable",
+    "inspector/remote",
+    "interpreter",
+    "jit",
+    "llint",
+    "parser",
+    "profiler",
+    "runtime",
+    "tools",
+    "wasm",
+    "wasm/js",
+    "yarr",
+  ];
+  DIRS
+    .iter()
+    .map(|d| jsc_src.join(d))
+    .filter(|p| p.is_dir())
+    .collect()
 }
 
 /// Compile `src/jsc/native_modules.cpp` (the native JSModuleRecord glue) against
@@ -768,14 +904,36 @@ fn build_native_modules_glue(
   println!("cargo:rustc-link-lib=static=v82jsc_native_modules");
 }
 
-/// Run bindgen over the SDK's JavaScriptCore C API umbrella header to produce
-/// the complete set of declarations (`JSValueRef`, `JSEvaluateScript`,
+/// Run bindgen over the JavaScriptCore C API umbrella header to produce the
+/// complete set of declarations (`JSValueRef`, `JSEvaluateScript`,
 /// `JSType`/`kJSType*`, `JSTypedArrayType`/`kJSTypedArrayType*`, ...). The
 /// generated names are identical to the C names, so `src/jsc_sys.rs` just
 /// `include!`s the output and the shim code keeps compiling.
-fn generate_jsc_bindings() {
+fn generate_jsc_bindings(include_root: Option<&std::path::Path>) {
   let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
   let out_path = out_dir.join("jsc_bindings.rs");
+
+  if let Some(root) = include_root {
+    let header = root.join("JavaScriptCore/JavaScript.h");
+    assert!(
+      header.is_file(),
+      "JavaScriptCore umbrella header not found at {} (is the vendored WebKit \
+       built?)",
+      header.display()
+    );
+    let bindings = bindgen::Builder::default()
+      .header(header.to_string_lossy())
+      .clang_arg(format!("-I{}", root.display()))
+      .allowlist_function("JS.*")
+      .allowlist_type("JS.*|Opaque.*")
+      .allowlist_var("kJS.*")
+      .generate()
+      .expect("bindgen failed to generate JavaScriptCore bindings");
+    std::fs::write(&out_path, bindings.to_string())
+      .expect("failed to write jsc_bindings.rs");
+    println!("cargo:rerun-if-changed={}", header.display());
+    return;
+  }
 
   let sdk = String::from_utf8(
     std::process::Command::new("xcrun")

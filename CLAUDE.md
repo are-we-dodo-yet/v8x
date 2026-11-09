@@ -7,9 +7,13 @@ The crate is literally named `v8` (version `152.2.0`) so it drops into Deno via
 | backend id | features | engine | OS |
 |---|---|---|---|
 | `jsc` | `engine_jsc,vendor_jsc` | WebKit JSCOnly built from source (shippable) | macOS |
+| `jsc-linux` | `engine_jsc,vendor_jsc` | same vendored JSCOnly build, host ICU + libstdc++ | Linux |
 | `sys-jsc` | `system_jsc` | Apple's `JavaScriptCore.framework` | macOS |
 | `quickjs` | `quickjs` | vendored quickjs-ng, static | any |
 | `v8` | `v8` | upstream rusty_v8 (reference cell, no shim) | any |
+
+`jsc` and `jsc-linux` share the features and source; they are separate cells so
+each OS ratchets its own pass set.
 
 Backend implementation lives in **`src/jsc/`** and **`src/quickjs/`** — these
 define the ~570 `v8__*` C-ABI symbols the vendored rusty_v8 Rust surface calls.
@@ -48,7 +52,10 @@ tests/status/baselines/<backend>/<suite>.txt   # one passing test name per line
 
 ## Local loop
 
-Prereqs: Node 22+, Rust stable. macOS for the JSC backends.
+Prereqs: Node 22+, Rust stable. macOS for `sys-jsc`. The vendored `jsc`
+backend builds on macOS and Linux; the Linux build needs cmake, ninja, ruby,
+perl, python3, clang or gcc, and ICU dev headers (`nix develop` in this repo
+provides all of them, `flake.nix`).
 
 ### rusty_v8 (cheapest — start here)
 

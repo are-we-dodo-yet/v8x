@@ -552,6 +552,7 @@ unsafe fn can_alloc_promise_with_margin(ctx: JSContextRef) -> bool {
 /// backends are macOS, so the pthread stack-introspection APIs are available.
 /// Returns `usize::MAX` (i.e. "don't guard") if introspection looks wrong, so a
 /// surprising platform can never spuriously trip the guard below.
+#[cfg(target_os = "macos")]
 fn stack_headroom_bytes() -> usize {
   unsafe extern "C" {
     fn pthread_self() -> *mut std::ffi::c_void;
@@ -572,6 +573,40 @@ fn stack_headroom_bytes() -> usize {
     let size = pthread_get_stacksize_np(t);
     let low = base.wrapping_sub(size);
     if base == 0 || size == 0 || sp > base || sp < low {
+      return usize::MAX;
+    }
+    sp - low
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn stack_headroom_bytes() -> usize {
+  use std::ffi::c_void;
+  #[repr(C, align(16))]
+  struct PthreadAttr([u8; 128]);
+  unsafe extern "C" {
+    fn pthread_self() -> usize;
+    fn pthread_getattr_np(t: usize, attr: *mut PthreadAttr) -> i32;
+    fn pthread_attr_getstack(
+      attr: *const PthreadAttr,
+      addr: *mut *mut c_void,
+      size: *mut usize,
+    ) -> i32;
+    fn pthread_attr_destroy(attr: *mut PthreadAttr) -> i32;
+  }
+  let probe: u8 = 0;
+  let sp = &probe as *const u8 as usize;
+  unsafe {
+    let mut attr = PthreadAttr([0; 128]);
+    if pthread_getattr_np(pthread_self(), &mut attr) != 0 {
+      return usize::MAX;
+    }
+    let mut low: *mut c_void = ptr::null_mut();
+    let mut size: usize = 0;
+    let rc = pthread_attr_getstack(&attr, &mut low, &mut size);
+    pthread_attr_destroy(&mut attr);
+    let low = low as usize;
+    if rc != 0 || low == 0 || size == 0 || sp < low || sp > low + size {
       return usize::MAX;
     }
     sp - low

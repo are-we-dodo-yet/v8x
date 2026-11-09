@@ -66,7 +66,7 @@ const IGNORE = new Set([
   ...archIgnore,
 ]);
 const isMac = os.platform() === "darwin";
-const needsCodesign = isMac && b.os === "macos"; // JSC JIT entitlements
+const needsCodesign = isMac && b.features.includes("jsc"); // JSC JIT entitlements
 const ENT = path.join(ROOT, "tools/jit-entitlements.plist");
 
 // Per-test wall-clock timeout. libtest has NO per-test timeout, and we run with

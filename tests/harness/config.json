@@ -10,6 +10,13 @@
       "comment": "WebKit JSCOnly built from source. The shippable engine."
     },
     {
+      "id": "jsc-linux",
+      "label": "JavaScriptCore (Linux)",
+      "features": "engine_jsc,vendor_jsc",
+      "os": "linux",
+      "comment": "Same vendored WebKit JSCOnly build, linked against the host ICU and libstdc++ on Linux. Separate cell so the Linux pass set ratchets independently of macOS."
+    },
+    {
       "id": "sys-jsc",
       "label": "JavaScriptCore System",
       "features": "system_jsc",
@@ -51,9 +58,13 @@
         "rv8_test_concurrent_isolate_creation_and_disposal",
         "rv8_test_cppgc"
       ],
-      "ignore_comment": "concurrent_isolate_creation_and_disposal is upstream cfg-disabled on aarch64, so the harness skips it only on arm64 local runs while x86_64 CI ratchets it.",
+      "ignore_comment": "concurrent_isolate_creation_and_disposal is upstream cfg-disabled on aarch64, so the harness skips it only on arm64 local runs while x86_64 CI ratchets it. On jsc-linux it is quarantined: it passes or SIGABRTs run to run (a concurrent isolate create/dispose race in the JSC backend), which would make the cell non-reproducible.",
       "ignore": [],
-      "ignore_by_backend": {},
+      "ignore_by_backend": {
+        "jsc-linux": [
+          "concurrent_isolate_creation_and_disposal"
+        ]
+      },
       "ignore_by_backend_arch": {
         "quickjs": {
           "arm64": [
