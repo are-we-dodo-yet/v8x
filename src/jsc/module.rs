@@ -2806,11 +2806,13 @@ pub extern "C" fn v8__Module__InstantiateModule(
 
   m.status = ModuleStatus::Instantiating;
   let specs = m.import_specifiers.clone();
+  let attributes = m.import_attributes.clone();
 
   let mut deps: Vec<*const Module> = Vec::new();
-  for spec in &specs {
+  for (idx, spec) in specs.iter().enumerate() {
     crate::jsc::core::restore_current(iso);
-    let dep = unsafe { resolve_dependency(context, cb, this, spec, 0) };
+    let attrs = attributes.get(idx).map(Vec::as_slice).unwrap_or(&[]);
+    let dep = unsafe { resolve_dependency(context, cb, this, spec, attrs) };
     if dep.is_null() {
       continue;
     }
@@ -2836,7 +2838,7 @@ unsafe fn resolve_dependency(
   cb: ResolveModuleCallback,
   referrer: *const Module,
   spec: &str,
-  attr_type: i32,
+  attrs: &[(std::string::String, std::string::String)],
 ) -> *const Module {
   let ctx = ctx_of(context) as JSContextRef;
   if ctx.is_null() {
@@ -2855,25 +2857,21 @@ unsafe fn resolve_dependency(
   // deno's resolve callback reads import attributes as StaticImport triples
   // [key, value, source_offset] and derives the requested module type, which it
   // matches against the request — so a JSON/wasm edge must carry its `type`.
-  let type_str = match attr_type {
-    3 => Some("json"),
-    2 => Some("webassembly"),
-    _ => None,
-  };
   let attrs_arr = unsafe {
-    if let Some(ts) = type_str {
-      let mk = |s: &str| -> JSValueRef {
-        let c = std::ffi::CString::new(s).unwrap();
-        let js = JSStringCreateWithUTF8CString(c.as_ptr());
-        let v = JSValueMakeString(ctx, js);
-        JSStringRelease(js);
-        v
-      };
-      let triple = [mk("type"), mk(ts), JSValueMakeNumber(ctx, 0.0)];
-      JSObjectMakeArray(ctx, 3, triple.as_ptr(), &mut exc)
-    } else {
-      JSObjectMakeArray(ctx, 0, ptr::null(), &mut exc)
+    let mk = |s: &str| -> JSValueRef {
+      let c = std::ffi::CString::new(s).unwrap_or_default();
+      let js = JSStringCreateWithUTF8CString(c.as_ptr());
+      let v = JSValueMakeString(ctx, js);
+      JSStringRelease(js);
+      v
+    };
+    let mut triples: Vec<JSValueRef> = Vec::with_capacity(attrs.len() * 3);
+    for (k, v) in attrs {
+      triples.push(mk(k));
+      triples.push(mk(v));
+      triples.push(JSValueMakeNumber(ctx, 0.0));
     }
+    JSObjectMakeArray(ctx, triples.len(), triples.as_ptr(), &mut exc)
   };
   let attrs_handle = intern_ctx::<FixedArray>(ctx, attrs_arr as JSValueRef);
 
@@ -2920,7 +2918,15 @@ fn native_populate(
     } else {
       unsafe { v82jsc_module_request_attr_type(this_native, idx as i32) }
     };
-    let dep = unsafe { resolve_dependency(context, cb, this, spec, attr_type) };
+    let type_attr = match attr_type {
+      3 => Some("json"),
+      2 => Some("webassembly"),
+      _ => None,
+    };
+    let attrs: Vec<(std::string::String, std::string::String)> = type_attr
+      .map(|t| vec![("type".into(), t.into())])
+      .unwrap_or_default();
+    let dep = unsafe { resolve_dependency(context, cb, this, spec, &attrs) };
     if dep.is_null() {
       linkable = false;
       continue;

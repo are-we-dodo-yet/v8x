@@ -595,6 +595,7 @@ pub extern "C" fn v8__Context__New(
   let ctx = unsafe { JSGlobalContextCreateInGroup(st.group, ptr::null_mut()) };
   st.owned_contexts.push(ctx);
   unsafe { install_context_compat_shims(ctx) };
+  unsafe { install_shared_array_buffer_shim(ctx) };
   unsafe { install_stacktrace_shim(ctx) };
 
   unsafe { crate::jsc::isolate::install_unhandled_rejection_bridge(ctx) };
@@ -938,6 +939,55 @@ unsafe fn install_context_compat_shims(ctx: JSGlobalContextRef) {
             return realIsProto.call(this, o);\
         }, writable: true, enumerable: false, configurable: true });\
     })()\0";
+  unsafe {
+    let js = JSStringCreateWithUTF8CString(
+      SRC.as_ptr() as *const std::os::raw::c_char
+    );
+    let mut exc: JSValueRef = ptr::null();
+    JSEvaluateScript(ctx, js, ptr::null_mut(), ptr::null_mut(), 1, &mut exc);
+    JSStringRelease(js);
+  }
+}
+
+unsafe fn install_shared_array_buffer_shim(ctx: JSGlobalContextRef) {
+  if ctx.is_null() {
+    return;
+  }
+  const SRC: &[u8] = b"(function(){\
+    'use strict';\
+    if (typeof globalThis.SharedArrayBuffer === 'function') return;\
+    var AB = ArrayBuffer;\
+    var dp = Object.defineProperty;\
+    var brand = new WeakSet();\
+    var abByteLength = Object.getOwnPropertyDescriptor(AB.prototype, 'byteLength').get;\
+    var abSlice = AB.prototype.slice;\
+    function check(o, name){\
+      if (!brand.has(o)) throw new TypeError('SharedArrayBuffer.prototype.' + name + ' called on incompatible receiver');\
+    }\
+    function SharedArrayBuffer(length){\
+      if (new.target === undefined) throw new TypeError(\"Constructor SharedArrayBuffer requires 'new'\");\
+      var buf = new AB(length);\
+      Object.setPrototypeOf(buf, new.target.prototype);\
+      brand.add(buf);\
+      return buf;\
+    }\
+    var proto = SharedArrayBuffer.prototype;\
+    dp(proto, 'constructor', { value: SharedArrayBuffer, writable: true, enumerable: false, configurable: true });\
+    dp(proto, 'byteLength', { get: function(){ check(this, 'byteLength'); return abByteLength.call(this); }, enumerable: false, configurable: true });\
+    dp(proto, 'growable', { get: function(){ check(this, 'growable'); return false; }, enumerable: false, configurable: true });\
+    dp(proto, 'maxByteLength', { get: function(){ check(this, 'maxByteLength'); return abByteLength.call(this); }, enumerable: false, configurable: true });\
+    dp(proto, 'grow', { value: function grow(){ check(this, 'grow'); throw new TypeError('SharedArrayBuffer is not growable'); }, writable: true, enumerable: false, configurable: true });\
+    dp(proto, 'slice', { value: function slice(start, end){\
+      check(this, 'slice');\
+      var copy = abSlice.call(this, start, end);\
+      var out = new SharedArrayBuffer(copy.byteLength);\
+      new Uint8Array(out).set(new Uint8Array(copy));\
+      return out;\
+    }, writable: true, enumerable: false, configurable: true });\
+    dp(proto, Symbol.toStringTag, { value: 'SharedArrayBuffer', writable: false, enumerable: false, configurable: true });\
+    dp(SharedArrayBuffer, Symbol.species, { get: function(){ return this; }, enumerable: false, configurable: true });\
+    dp(globalThis, 'SharedArrayBuffer', { value: SharedArrayBuffer, writable: true, enumerable: false, configurable: true });\
+  })()\0";
   unsafe {
     let js = JSStringCreateWithUTF8CString(
       SRC.as_ptr() as *const std::os::raw::c_char

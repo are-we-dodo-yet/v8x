@@ -1140,18 +1140,38 @@ pub extern "C" fn v8__Float16Array__New(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn v8__SharedArrayBuffer__NewBackingStore__with_data(
-  _data: *mut std::os::raw::c_void,
-  _byte_length: usize,
-  _deleter: *const std::os::raw::c_void,
-  _deleter_data: *mut std::os::raw::c_void,
-) -> *mut std::os::raw::c_void {
-  std::ptr::null_mut()
+  data: *mut c_void,
+  byte_length: usize,
+  deleter: BackingStoreDeleterCallback,
+  deleter_data: *mut c_void,
+) -> *mut BackingStore {
+  BsInner::boxed(data, byte_length, true, deleter, deleter_data, false)
+    as *mut BackingStore
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn v8__SharedArrayBuffer__New__with_byte_length(
-  _isolate: *mut std::os::raw::c_void,
-  _byte_length: usize,
-) -> *const std::os::raw::c_void {
-  std::ptr::null()
+  isolate: *mut RealIsolate,
+  byte_length: usize,
+) -> *const SharedArrayBuffer {
+  let st = iso_state(isolate);
+  let ctx =
+    st.contexts.last().copied().unwrap_or(ptr::null_mut()) as JSContextRef;
+  if ctx.is_null() {
+    return ptr::null();
+  }
+  let ctor = unsafe {
+    crate::jsc::serializer::global_ctor(ctx, c"SharedArrayBuffer".as_ptr())
+  };
+  if ctor.is_null() {
+    return ptr::null();
+  }
+  let args = [unsafe { JSValueMakeNumber(ctx, byte_length as f64) }];
+  let mut exc: JSValueRef = ptr::null();
+  let obj =
+    unsafe { JSObjectCallAsConstructor(ctx, ctor, 1, args.as_ptr(), &mut exc) };
+  if obj.is_null() || !exc.is_null() {
+    return ptr::null();
+  }
+  intern_ctx::<SharedArrayBuffer>(ctx, obj as JSValueRef)
 }
