@@ -645,7 +645,9 @@ function report(res) {
     for (const name of r.regressions) {
       const out = _sets.failOutput.get(name);
       if (!out) continue;
-      const clipped = out.length > 8000 ? out.slice(-8000) : out;
+      const clipped = out.length > 8000
+        ? `${out.slice(0, 4000)}\n... [${out.length - 8000} bytes clipped] ...\n${out.slice(-4000)}`
+        : out;
       console.error(`\n--- output: ${name} ---\n${clipped}\n--- end ---`);
     }
   }
