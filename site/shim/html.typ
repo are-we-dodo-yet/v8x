@@ -56,12 +56,12 @@
     #text("   ")
     #html.elem("a", attrs: (href: "status/"), [dashboard])
     #text("   ")
-    #html.elem("a", attrs: (href: "https://github.com/littledivy/v8x"), [github])
+    #html.elem("a", attrs: (href: "https://github.com/are-we-dodo-yet/v8x"), [github])
   ])
 }
 
 #let site-footer() = html.elem("footer", [
-  #html.elem("a", attrs: (href: "https://github.com/littledivy/v8x"), [github.com/littledivy/v8x])
+  #html.elem("a", attrs: (href: "https://github.com/are-we-dodo-yet/v8x"), [github.com/are-we-dodo-yet/v8x])
 ])
 
 /// An aside worth flagging. Usage: `#note[...]`
